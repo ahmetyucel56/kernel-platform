@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user
+from app.lib import documents
 from app.lib.upload import read_upload
 from app.lib.ziputil import ZipExtractError, extract_zip
 from app.models import Assignment, Enrollment, Precheck, User
@@ -128,7 +129,11 @@ def run_precheck(
     except ZipExtractError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    blobs = [FileBlob(path=f.path, content=f.content or "") for f in files]
+    if asg.submission_kind == "document":
+        err = documents.document_kind_error([f.path for f in files])
+        if err:
+            raise HTTPException(status_code=400, detail=err)
+    blobs = [FileBlob(path=f.path, content=f.content or f.extracted_text or "") for f in files]
     result = ana.requirement_check(blobs, list(asg.requirements_json or []))
     p = Precheck(
         assignment_id=asg.id,

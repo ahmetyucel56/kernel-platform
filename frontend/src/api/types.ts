@@ -131,6 +131,7 @@ export interface Assignment {
   /** Hocanın başlattığı AI sonuçlarını öğrenci görsün mü (hocanın kararı) */
   show_requirement_to_student?: boolean;
   show_clean_code_to_student?: boolean;
+  submission_kind?: "code" | "document";
 }
 
 /** Verilmiş süre uzatması (student_id null = tüm sınıf). */
@@ -194,6 +195,28 @@ export interface FileContent {
   content: string | null;
   is_binary: boolean;
   size_bytes: number;
+  preview?: "image" | "pdf" | "docx" | "none";
+  has_text?: boolean;
+}
+
+export type DocRun = { s: string; b: boolean; i: boolean };
+export type DocBlock =
+  | { t: "h"; level: number; runs: DocRun[] }
+  | { t: "p"; runs: DocRun[] }
+  | { t: "li"; ordered: boolean; depth: number; runs: DocRun[] }
+  | { t: "img"; src: string }
+  | { t: "table"; rows: string[][] };
+
+export interface FilePreview {
+  kind: "image" | "pdf" | "docx" | "none";
+  url?: string | null;
+  width?: number | null;
+  height?: number | null;
+  pages: { url: string; width: number; height: number }[];
+  page_count: number;
+  truncated: boolean;
+  blocks: DocBlock[];
+  reason?: string | null;
 }
 
 export interface DiffLine {

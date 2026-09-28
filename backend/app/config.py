@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-secret-change-me"
     jwt_expires_minutes: int = 10080  # 7 gun
     admin_jwt_expires_minutes: int = 480  # yonetici oturumu 8 saat
+    # Hata takibi (Sentry). Bos ise kapali. Kisisel veri gonderilmez (send_default_pii=False).
+    sentry_dsn: str = ""
+    sentry_environment: str = "production"
     # KVKK aydinlatma metninde gosterilir (okul/kurum belli olunca Render'da degistir)
     privacy_controller: str = "Kernel projesi (pilot uygulama)"
     privacy_contact: str = ""

@@ -96,6 +96,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="shell-main">
         <div className="shell-topbar">
+          <span className="topbar-logo" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 21, letterSpacing: "-0.03em" }}>
+            {BRAND_NAME}
+            <span style={{ color: "var(--gold)" }}>.</span>
+          </span>
           <NotificationBell />
           <ThemeToggle />
           <LogoutButton />

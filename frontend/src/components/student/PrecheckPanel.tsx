@@ -11,7 +11,7 @@ const REQ_LABEL: Record<ReqStatus, string> = { met: "Tam", partial: "Kısmen", m
 const REQ_COLOR: Record<ReqStatus, string> = { met: OK, partial: "var(--gold)", missing: BAD };
 
 /** Teslim öncesi ön kontrol: akademisyen ödevde açtıysa görünür. Teslim oluşturmaz. */
-export function PrecheckPanel({ assignmentId }: { assignmentId: string }) {
+export function PrecheckPanel({ assignmentId, document = false }: { assignmentId: string; document?: boolean }) {
   const [st, setSt] = useState<PrecheckStatus | null>(null);
   const [result, setResult] = useState<PrecheckResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -58,7 +58,7 @@ export function PrecheckPanel({ assignmentId }: { assignmentId: string }) {
             Teslim öncesi ön kontrol
           </div>
           <div className="muted" style={{ fontSize: 12 }}>
-            Kodunu kurallara göre kontrol et; bu bir teslim değildir, notlanmaz.
+            {document ? "Raporunu" : "Kodunu"} kurallara göre kontrol et; bu bir teslim değildir, notlanmaz.
           </div>
         </div>
         <FilePickButtons
@@ -68,6 +68,7 @@ export function PrecheckPanel({ assignmentId }: { assignmentId: string }) {
           onPick={onFiles}
           primary={false}
           small
+          document={document}
         />
       </div>
       <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>

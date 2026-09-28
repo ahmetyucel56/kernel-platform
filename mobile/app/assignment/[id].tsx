@@ -7,7 +7,7 @@ import { colors, fonts } from "../../src/theme";
 import { PrecheckSettings } from "../../src/PrecheckSettings";
 import { DateTimeField } from "../../src/DateTimeField";
 import { dueLabel, dueOf, fmtDateTime, isPast, timeLeft } from "../../src/format";
-import { StudentVisibility, type Visibility } from "../../src/StudentVisibility";
+import { StudentVisibility, SubmissionKindPicker, type SubmissionKind, type Visibility } from "../../src/StudentVisibility";
 import { radius } from "../../src/theme";
 
 function inThreeDays(): Date {
@@ -62,6 +62,7 @@ export default function AssignmentDetail() {
   const [eDeadline, setEDeadline] = useState(() => new Date());
   const [ePre, setEPre] = useState({ enabled: false, limit: 3 });
   const [eVis, setEVis] = useState<Visibility>({ requirement: true, cleanCode: true });
+  const [eKind, setEKind] = useState<SubmissionKind>("code");
   const [savingEdit, setSavingEdit] = useState(false);
   const [editMsg, setEditMsg] = useState<string | null>(null);
 
@@ -192,6 +193,7 @@ export default function AssignmentDetail() {
       requirement: assignment.show_requirement_to_student !== false,
       cleanCode: assignment.show_clean_code_to_student !== false,
     });
+    setEKind(assignment.submission_kind ?? "code");
     setEditMsg(null);
     toggle("edit");
   }
@@ -227,6 +229,7 @@ export default function AssignmentDetail() {
           precheck_limit: ePre.limit,
           show_requirement_to_student: eVis.requirement,
           show_clean_code_to_student: eVis.cleanCode,
+          submission_kind: eKind,
         },
       });
       setAssignment(updated);
@@ -279,8 +282,11 @@ export default function AssignmentDetail() {
       )}
       {assignment && (
         <Muted style={{ fontSize: 12, marginTop: 4 }}>
-          Öğrenci AI sonuçlarını görüyor: gereksinim {assignment.show_requirement_to_student === false ? "✗" : "✓"} · Clean
-          Code {assignment.show_clean_code_to_student === false ? "✗" : "✓"}
+          {assignment.submission_kind === "document" ? "Rapor / belge · " : ""}
+          Öğrenci AI sonuçlarını görüyor: gereksinim {assignment.show_requirement_to_student === false ? "✗" : "✓"}
+          {assignment.submission_kind === "document"
+            ? ""
+            : ` · Clean Code ${assignment.show_clean_code_to_student === false ? "✗" : "✓"}`}
         </Muted>
       )}
       {assignment?.description ? <Muted style={{ marginTop: 8, fontSize: 13.5 }}>{assignment.description}</Muted> : null}
@@ -331,8 +337,9 @@ export default function AssignmentDetail() {
               iptal edebilirsin).
             </Muted>
           )}
+          <SubmissionKindPicker value={eKind} onChange={setEKind} />
           <PrecheckSettings enabled={ePre.enabled} limit={ePre.limit} onChange={(enabled, limit) => setEPre({ enabled, limit })} />
-          <StudentVisibility value={eVis} onChange={setEVis} />
+          <StudentVisibility value={eVis} onChange={setEVis} document={eKind === "document"} />
           {editMsg && <Text style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}>{editMsg}</Text>}
           <View style={{ marginTop: 12 }}>
             <Btn title={savingEdit ? "Kaydediliyor…" : "Kaydet"} variant="gold" onPress={saveEdit} disabled={savingEdit} />

@@ -9,6 +9,30 @@ from app import db as db_module
 from app.config import settings
 from app.db import SessionLocal, init_db
 from app.services import account_security as sec
+
+if settings.sentry_dsn:
+    import sentry_sdk
+
+    def _scrub(event, _hint):
+        # Ek guvence: istek govdesi, cerezler ve kimlik basliklari asla gitmesin
+        req = event.get("request") or {}
+        req.pop("data", None)
+        req.pop("cookies", None)
+        headers = req.get("headers") or {}
+        for k in list(headers):
+            if k.lower() in ("authorization", "cookie", "x-device-id"):
+                headers[k] = "[silindi]"
+        event.pop("user", None)
+        return event
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment,
+        send_default_pii=False,
+        traces_sample_rate=0.0,  # yalnizca hatalar (performans izleme yok)
+        max_request_body_size="never",
+        before_send=_scrub,
+    )
 from app.services.analysis_service import AIUnavailable
 from app.routers import (
     admin,

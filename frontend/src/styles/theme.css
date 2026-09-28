@@ -923,38 +923,70 @@ a.stat:hover {
     font-size: 16px;
   }
 
-  /* Kabuk: mobilde sidebar ustte yatay serit olur */
+  /* Kabuk: mobilde menü, telefon uygulamasındaki gibi altta sabit sekme çubuğu olur */
   .shell {
     flex-direction: column;
   }
   .sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
     width: auto;
     height: auto;
-    position: sticky;
-    top: 0;
-    z-index: 20;
+    z-index: 30;
     flex-direction: row;
-    align-items: center;
-    gap: 4px;
-    padding: 8px 12px;
-    overflow-x: auto;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 0;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    overflow: visible;
   }
-  .sidebar-logo {
-    padding: 0 8px 0 2px;
-  }
+  .sidebar-logo,
   .sidebar-spacer,
   .sidebar-user {
     display: none;
   }
   .nav-link {
-    padding: 8px 10px;
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 2px;
+    font-size: 11px;
+    text-align: center;
+  }
+  .nav-link.active {
+    background: transparent;
+    color: var(--gold);
   }
   .shell-topbar {
     padding: 10px 16px 0;
+    align-items: center;
+  }
+  .shell-topbar .topbar-logo {
+    display: block;
+    margin-right: auto;
   }
   .shell-content {
-    padding: 6px 16px 40px;
+    padding: 6px 16px calc(84px + env(safe-area-inset-bottom));
   }
+}
+
+.topbar-logo {
+  display: none;
+}
+
+/* Izgara sütunları içerik uzadıkça ekranı aşmasın (uzun kod/metin kendi içinde kayar) */
+.cols-main > *,
+.cols-split > *,
+.cols-sidebar > *,
+.cols-2-eq > *,
+.split > * {
+  min-width: 0;
 }
 
 @media (max-width: 760px) {

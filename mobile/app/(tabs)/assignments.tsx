@@ -5,6 +5,7 @@ import * as DocumentPicker from "expo-document-picker";
 import {
   api,
   ApiError,
+  DOCUMENT_MIME,
   uploadSubmission,
   type Assignment,
   type ClassOut,
@@ -112,6 +113,9 @@ function AcademicianCard({ a }: { a: Assignment }) {
           <Tag text={past ? "Süre doldu" : "Açık"} color={past ? colors.muted : colors.gold} />
         </View>
         <Muted style={{ marginTop: 6, fontSize: 13 }}>Teslim: {dueLabel(a)}</Muted>
+      {a.submission_kind === "document" && (
+        <Muted style={{ marginTop: 2, fontSize: 12 }}>Rapor / belge ödevi: PDF, DOCX, görsel ya da TXT yükle.</Muted>
+      )}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
           <Muted style={{ fontSize: 13 }}>
             {count === null ? "Gönderimler…" : `${count} öğrenci teslim etti`}
@@ -140,7 +144,7 @@ function AssignmentCard({ a }: { a: Assignment }) {
     setMsg(null);
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
+        type: a.submission_kind === "document" ? DOCUMENT_MIME : "*/*",
         copyToCacheDirectory: true,
         multiple: true,
       });
@@ -205,7 +209,7 @@ function AssignmentCard({ a }: { a: Assignment }) {
         )}
       </View>
 
-      {a.precheck_enabled && !past && <PrecheckCard assignmentId={a.id} />}
+      {a.precheck_enabled && !past && <PrecheckCard assignmentId={a.id} document={a.submission_kind === "document"} />}
 
       {subs.length > 0 && (
         <View style={{ marginTop: 12 }}>

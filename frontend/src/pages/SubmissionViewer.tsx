@@ -17,6 +17,7 @@ import type {
 import { CodeView } from "../components/code/CodeView";
 import { FileTree } from "../components/code/FileTree";
 import { DiffView } from "../components/code/DiffView";
+import { FilePreview } from "../components/code/FilePreview";
 import { ReviewPanel } from "../components/review/ReviewPanel";
 import { useAuth } from "../auth/AuthContext";
 import { formatDate } from "../lib/format";
@@ -121,16 +122,18 @@ export function SubmissionViewer() {
 
   // Hoca: ödev ayarına göre öğrencinin görmediği AI sonuç türleri (kartlarda gösterilir)
   const [hiddenFromStudent, setHiddenFromStudent] = useState<string[] | undefined>(undefined);
+  const [isDocument, setIsDocument] = useState(false);
   useEffect(() => {
     if (!canReview || !submission?.assignment_id) return;
     api<Assignment>(`/assignments/${submission.assignment_id}`)
-      .then((a) =>
+      .then((a) => {
+        setIsDocument(a.submission_kind === "document");
         setHiddenFromStudent([
           "plagiarism",
           ...(a.show_requirement_to_student === false ? ["requirement_check"] : []),
           ...(a.show_clean_code_to_student === false ? ["clean_code"] : []),
-        ])
-      )
+        ]);
+      })
       .catch(() => {});
   }, [canReview, submission?.assignment_id]);
 
@@ -243,7 +246,12 @@ export function SubmissionViewer() {
             diff ? <DiffView diff={diff} /> : <span className="muted">Diff yükleniyor…</span>
           ) : fileContent ? (
             fileContent.is_binary ? (
-              <div className="card"><span className="muted">İkili (binary) dosya — önizleme yok.</span></div>
+              <div className="stack" style={{ gap: 8 }}>
+                {fileContent.has_text && (
+                  <div className="faint" style={{ fontSize: 12 }}>Yapay zekâ bu belgenin metnini okuyabiliyor.</div>
+                )}
+                <FilePreview submissionId={currentId} path={fileContent.path} />
+              </div>
             ) : fileContent.content === null ? (
               <div className="card"><span className="muted">Dosya çok büyük, içerik saklanmadı.</span></div>
             ) : (
@@ -274,6 +282,7 @@ export function SubmissionViewer() {
           {currentId && (
             <ReviewPanel
               hiddenFromStudent={hiddenFromStudent}
+              document={isDocument}
               submissionId={currentId}
               selectedPath={selectedPath}
               canReview={canReview}

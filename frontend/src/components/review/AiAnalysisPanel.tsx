@@ -24,11 +24,14 @@ export function AiAnalysisPanel({
   readOnly = false,
   onAnalyzed,
   hiddenFromStudent,
+  document = false,
 }: {
   submissionId: string;
   readOnly?: boolean;
   /** Hoca görünümü: ödev ayarına göre öğrencinin görmediği analiz türleri */
   hiddenFromStudent?: string[];
+  /** Rapor/belge ödevi: Clean Code düğmesi gösterilmez */
+  document?: boolean;
   /** Yeni analiz tamamlanınca (ör. not önerisini tazelemek için) */
   onAnalyzed?: () => void;
 }) {
@@ -82,7 +85,7 @@ export function AiAnalysisPanel({
             Yapay zeka yalnızca sen tetiklediğinde çalışır. Bir analiz seç:
           </p>
           <div className="row" style={{ flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-            {TYPES.map((t) => (
+            {TYPES.filter((t) => !(document && t.key === "clean_code")).map((t) => (
               <button key={t.key} className="btn" onClick={() => run(t.key)} disabled={busy !== null}>
                 {busy === t.key ? "Analiz ediliyor…" : t.label}
               </button>

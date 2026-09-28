@@ -45,6 +45,7 @@ import { code, colors, fonts } from "../../src/theme";
 type SubTab = "review" | "files" | "ai";
 import { CLEAN_WEIGHT, COVERAGE_WEIGHT, gradeHint, PLAGIARISM_WARN } from "../../src/grade";
 import { API_BASE_URL } from "../../src/config";
+import { FilePreview } from "../../src/FilePreview";
 
 const MONO = Platform.select({ ios: "Menlo", default: "monospace" });
 
@@ -58,6 +59,10 @@ function fmt(iso: string) {
 }
 
 type FileRow = { path: string; size: number; binary: boolean };
+
+// Uygulama içinde önizlenebilen ikili dosyalar (sunucu /preview ile aynı liste)
+const PREVIEW_EXT = /\.(pdf|docx|png|jpe?g|gif|webp)$/i;
+const canOpen = (f: FileRow) => !f.binary || PREVIEW_EXT.test(f.path);
 
 function flattenFiles(node: FileTreeNode | null): FileRow[] {
   const out: FileRow[] = [];
@@ -89,6 +94,7 @@ export default function SubmissionScreen() {
   const [tab, setTab] = useState<SubTab>("review");
   // Hoca: odev ayarina gore ogrencinin gormedigi AI sonuc turleri
   const [hidden, setHidden] = useState<string[] | null>(null);
+  const [isDocument, setIsDocument] = useState(false);
 
   const [openFile, setOpenFile] = useState<FileContent | null>(null);
   const [fileBusy, setFileBusy] = useState(false);
@@ -128,13 +134,14 @@ export default function SubmissionScreen() {
         setScore(sc);
         if (user?.role === "academician" || user?.role === "admin") {
           api<Assignment>(`/assignments/${s.assignment_id}`)
-            .then((a) =>
+            .then((a) => {
+              setIsDocument(a.submission_kind === "document");
               setHidden([
                 "plagiarism",
                 ...(a.show_requirement_to_student === false ? ["requirement_check"] : []),
                 ...(a.show_clean_code_to_student === false ? ["clean_code"] : []),
-              ])
-            )
+              ]);
+            })
             .catch(() => {});
         }
         // Aynı öğrencinin bu ödevdeki tüm sürümleri (sürüm değiştirici)
@@ -522,7 +529,7 @@ export default function SubmissionScreen() {
             <Card>
               <Muted style={{ fontSize: 13 }}>Analiz yalnızca sen istediğinde çalışır. Bir tür seç:</Muted>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                {ANALYSIS_TYPES.map((t) => (
+                {ANALYSIS_TYPES.filter((t) => !(isDocument && t.key === "clean_code")).map((t) => (
                   <Pressable
                     key={t.key}
                     onPress={() => runAnalysis(t.key)}
@@ -571,7 +578,7 @@ export default function SubmissionScreen() {
             {files.map((f, i) => (
               <Pressable
                 key={f.path}
-                onPress={() => !f.binary && openFileAt(f.path)}
+                onPress={() => canOpen(f) && openFileAt(f.path)}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -579,7 +586,7 @@ export default function SubmissionScreen() {
                   minHeight: 44,
                   borderTopWidth: i === 0 ? 0 : 1,
                   borderTopColor: colors.line,
-                  opacity: f.binary ? 0.5 : 1,
+                  opacity: canOpen(f) ? 1 : 0.5,
                 }}
               >
                 <Icon name="file" size={14} color={colors.muted} />
@@ -587,7 +594,7 @@ export default function SubmissionScreen() {
                   {f.path}
                 </Text>
                 {commentedPaths.has(f.path) && <Icon name="message-square" size={13} color={colors.gold} />}
-                <Text style={{ color: colors.faint, fontSize: 11 }}>{f.binary ? "ikili" : `${f.size} B`}</Text>
+                <Text style={{ color: colors.faint, fontSize: 11 }}>{f.binary ? (canOpen(f) ? "önizle" : "ikili") : `${f.size} B`}</Text>
               </Pressable>
             ))}
           </Card>
@@ -652,6 +659,9 @@ export default function SubmissionScreen() {
             </Text>
           )}
 
+          {!diffMode && openFile?.is_binary ? (
+            <FilePreview submissionId={id} path={openFile.path} hasText={openFile.has_text} />
+          ) : (
           <ScrollView style={{ flex: 1, backgroundColor: code.bg }} contentContainerStyle={{ padding: 14 }}>
             <ScrollView horizontal showsHorizontalScrollIndicator>
               {diffMode ? (
@@ -715,6 +725,7 @@ export default function SubmissionScreen() {
               )}
             </ScrollView>
           </ScrollView>
+          )}
 
           {/* Satır yorum ipucu / thread + composer */}
           {!diffMode && openFile && !openFile.is_binary && openFile.content !== null && activeLine == null && (

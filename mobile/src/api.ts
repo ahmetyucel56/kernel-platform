@@ -129,6 +129,15 @@ export function runPrecheck(
   return uploadFiles(`/assignments/${assignmentId}/precheck`, files);
 }
 
+/** Rapor/belge ödevinde seçicide gösterilen türler (sunucu da ayrıca denetler). */
+export const DOCUMENT_MIME = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/*",
+  "text/plain",
+  "text/markdown",
+];
+
 async function uploadFiles<T>(path: string, files: PickedFile[]): Promise<T> {
   const t = await getToken();
   const total = files.reduce((s, f) => s + (f.size ?? 0), 0);
@@ -288,6 +297,7 @@ export interface Assignment {
   precheck_limit?: number;
   show_requirement_to_student?: boolean;
   show_clean_code_to_student?: boolean;
+  submission_kind?: "code" | "document";
 }
 
 /** Verilmiş süre uzatması (student_id null = tüm sınıf). */
@@ -370,6 +380,29 @@ export interface FileContent {
   content: string | null;
   is_binary: boolean;
   size_bytes: number;
+  preview?: "image" | "pdf" | "docx" | "none";
+  has_text?: boolean;
+}
+
+export type DocRun = { s: string; b: boolean; i: boolean };
+export type DocBlock =
+  | { t: "h"; level: number; runs: DocRun[] }
+  | { t: "p"; runs: DocRun[] }
+  | { t: "li"; ordered: boolean; depth: number; runs: DocRun[] }
+  | { t: "img"; src: string }
+  | { t: "table"; rows: string[][] };
+
+/** Görsel / PDF / DOCX önizlemesi (web ile aynı uç: /submissions/{id}/preview). */
+export interface FilePreview {
+  kind: "image" | "pdf" | "docx" | "none";
+  url?: string | null;
+  width?: number | null;
+  height?: number | null;
+  pages: { url: string; width: number; height: number }[];
+  page_count: number;
+  truncated: boolean;
+  blocks: DocBlock[];
+  reason?: string | null;
 }
 
 export interface DiffLine {

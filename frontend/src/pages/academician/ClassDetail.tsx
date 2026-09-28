@@ -281,12 +281,12 @@ function AssignmentPanel({ a, onChanged }: { a: Assignment; onChanged: () => voi
         <div style={{ minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: 22 }}>{a.title}</h2>
           <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-            Son teslim {dueLabel(a)} · {reqs.length} kural
+            {a.submission_kind === "document" ? "Rapor / belge · " : ""}Son teslim {dueLabel(a)} · {reqs.length} kural
             {a.precheck_enabled ? ` · Ön kontrol açık (${a.precheck_limit}/gün)` : ""}
           </div>
           <div className="faint" style={{ fontSize: 12, marginTop: 2 }}>
-            Öğrenci AI sonuçlarını görüyor: gereksinim {a.show_requirement_to_student === false ? "✗" : "✓"} · Clean Code{" "}
-            {a.show_clean_code_to_student === false ? "✗" : "✓"}
+            Öğrenci AI sonuçlarını görüyor: gereksinim {a.show_requirement_to_student === false ? "✗" : "✓"}
+            {a.submission_kind === "document" ? "" : <> · Clean Code {a.show_clean_code_to_student === false ? "✗" : "✓"}</>}
           </div>
         </div>
         <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
@@ -739,6 +739,7 @@ function EditAssignment({ a, onDone }: { a: Assignment; onDone: () => void }) {
     requirement: a.show_requirement_to_student !== false,
     cleanCode: a.show_clean_code_to_student !== false,
   });
+  const [kind, setKind] = useState<"code" | "document">(a.submission_kind ?? "code");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const deadlineChanged = deadline !== isoToLocalInput(a.deadline_at);
@@ -760,6 +761,7 @@ function EditAssignment({ a, onDone }: { a: Assignment; onDone: () => void }) {
           precheck_limit: pre.limit,
           show_requirement_to_student: vis.requirement,
           show_clean_code_to_student: vis.cleanCode,
+          submission_kind: kind,
         },
       });
       onDone();
@@ -794,8 +796,9 @@ function EditAssignment({ a, onDone }: { a: Assignment; onDone: () => void }) {
         <label>Gereksinimler (her satır bir madde)</label>
         <textarea value={reqText} onChange={(e) => setReqText(e.target.value)} rows={4} />
       </div>
+      <SubmissionKindPicker value={kind} onChange={setKind} />
       <PrecheckSettings enabled={pre.enabled} limit={pre.limit} onChange={(enabled, limit) => setPre({ enabled, limit })} />
-      <StudentVisibility value={vis} onChange={setVis} />
+      <StudentVisibility value={vis} onChange={setVis} document={kind === "document"} />
       {err && <p className="error">{err}</p>}
       <button className="btn btn-primary" disabled={busy || !title}>
         {busy ? "…" : "Kaydet"}
@@ -811,12 +814,33 @@ function confirmPastDeadline(local: string): boolean {
 }
 
 /** Hocanın başlattığı AI sonuçlarını öğrenci görsün mü (ödev bazında, hocanın kararı). */
+
+/** Ödevin teslim türü: kod projesi ya da rapor/belge (PDF, DOCX, görsel). */
+function SubmissionKindPicker({ value, onChange }: { value: "code" | "document"; onChange: (v: "code" | "document") => void }) {
+  return (
+    <div className="field">
+      <label>Teslim türü</label>
+      <div className="seg" style={{ maxWidth: 460 }}>
+        <button type="button" className={value === "code" ? "on" : ""} onClick={() => onChange("code")}>Kod projesi</button>
+        <button type="button" className={value === "document" ? "on" : ""} onClick={() => onChange("document")}>Rapor / belge</button>
+      </div>
+      <p className="faint" style={{ fontSize: 12, margin: "6px 0 0" }}>
+        {value === "code"
+          ? "Öğrenci dosyalarını, proje klasörünü ya da ZIP yükler. Kod kalitesi ve gereksinim kontrolü yapılabilir."
+          : "Öğrenci PDF, DOCX, görsel (PNG/JPG) ya da TXT yükler; indirmeden önizlenir. Yapay zekâ gereksinimleri belgenin metninde kontrol eder."}
+      </p>
+    </div>
+  );
+}
+
 function StudentVisibility({
   value,
   onChange,
+  document = false,
 }: {
   value: { requirement: boolean; cleanCode: boolean };
   onChange: (v: { requirement: boolean; cleanCode: boolean }) => void;
+  document?: boolean;
 }) {
   const box = (checked: boolean, set: (v: boolean) => void, label: string) => (
     <label style={{ display: "flex", gap: 8, alignItems: "center", margin: 0, color: "var(--ink)", fontWeight: 500 }}>
@@ -833,7 +857,7 @@ function StudentVisibility({
       </div>
       <div className="stack" style={{ gap: 6 }}>
         {box(value.requirement, (v) => onChange({ ...value, requirement: v }), "Gereksinim kontrolü sonucu")}
-        {box(value.cleanCode, (v) => onChange({ ...value, cleanCode: v }), "Clean Code sonucu")}
+        {!document && box(value.cleanCode, (v) => onChange({ ...value, cleanCode: v }), "Clean Code sonucu")}
       </div>
     </div>
   );
@@ -1049,6 +1073,7 @@ function CreateAssignment({
   const [showAi, setShowAi] = useState(false);
   const [aiText, setAiText] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  const [kind, setKind] = useState<"code" | "document">("code");
 
   async function parseWithAi() {
     if (!aiText.trim()) return;
@@ -1088,6 +1113,7 @@ function CreateAssignment({
           precheck_limit: pre.limit,
           show_requirement_to_student: vis.requirement,
           show_clean_code_to_student: vis.cleanCode,
+          submission_kind: kind,
         },
       });
       onDone(created.id);
@@ -1152,8 +1178,9 @@ function CreateAssignment({
             style={{ marginTop: 8 }}
           />
         </div>
+        <SubmissionKindPicker value={kind} onChange={setKind} />
         <PrecheckSettings enabled={pre.enabled} limit={pre.limit} onChange={(enabled, limit) => setPre({ enabled, limit })} />
-        <StudentVisibility value={vis} onChange={setVis} />
+        <StudentVisibility value={vis} onChange={setVis} document={kind === "document"} />
         {err && <p className="error">{err}</p>}
         <button className="btn btn-primary" disabled={busy || !title || !deadline}>
           {busy ? "…" : "Ödev oluştur"}

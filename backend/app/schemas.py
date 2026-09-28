@@ -269,6 +269,7 @@ class AssignmentIn(BaseModel):
     precheck_limit: int = Field(default=3, ge=1, le=20)
     show_requirement_to_student: bool = True
     show_clean_code_to_student: bool = True
+    submission_kind: Literal["code", "document"] = "code"
 
 
 class AssignmentOut(BaseModel):
@@ -285,6 +286,7 @@ class AssignmentOut(BaseModel):
     precheck_limit: int = 3
     show_requirement_to_student: bool = True
     show_clean_code_to_student: bool = True
+    submission_kind: str = "code"
     # Uzatmalar dahil gecerli son tarih (ogrenci: kendine ozel + tum sinif;
     # hoca: tum sinif). "Acik mi?" karari buna gore verilir.
     effective_deadline_at: Optional[datetime] = None
@@ -299,6 +301,7 @@ class AssignmentUpdate(BaseModel):
     precheck_limit: Optional[int] = Field(default=None, ge=1, le=20)
     show_requirement_to_student: Optional[bool] = None
     show_clean_code_to_student: Optional[bool] = None
+    submission_kind: Optional[Literal["code", "document"]] = None
 
 
 class ReopenIn(BaseModel):
@@ -347,6 +350,20 @@ class FileContentOut(BaseModel):
     content: Optional[str] = None
     is_binary: bool
     size_bytes: int
+    preview: str = "none"          # image | pdf | docx | none (ikili dosyalar için)
+    has_text: bool = False         # belgeden metin çıkarılabildi mi (yapay zekâ okuyabilir)
+
+
+class PreviewOut(BaseModel):
+    kind: str                      # image | pdf | docx | none
+    url: Optional[str] = None      # image
+    width: Optional[int] = None
+    height: Optional[int] = None
+    pages: list[dict] = []         # pdf: [{url, width, height}]
+    page_count: int = 0
+    truncated: bool = False
+    blocks: list[dict] = []        # docx
+    reason: Optional[str] = None
 
 
 class DiffLine(BaseModel):

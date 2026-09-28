@@ -6,7 +6,7 @@ import { BackHeader, Btn, Card, Loader, Muted, Screen, Select, form } from "../.
 import { colors, fonts, radius } from "../../src/theme";
 import { PrecheckSettings } from "../../src/PrecheckSettings";
 import { DateTimeField } from "../../src/DateTimeField";
-import { StudentVisibility, type Visibility } from "../../src/StudentVisibility";
+import { StudentVisibility, SubmissionKindPicker, type SubmissionKind, type Visibility } from "../../src/StudentVisibility";
 
 const PRESETS = [
   { days: 7, label: "1 hafta" },
@@ -34,6 +34,7 @@ export default function NewAssignment() {
   const [deadline, setDeadline] = useState(() => daysFromNow(7));
   const [pre, setPre] = useState({ enabled: false, limit: 3 });
   const [vis, setVis] = useState<Visibility>({ requirement: true, cleanCode: true });
+  const [kind, setKind] = useState<SubmissionKind>("code");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -112,6 +113,7 @@ export default function NewAssignment() {
           precheck_limit: pre.limit,
           show_requirement_to_student: vis.requirement,
           show_clean_code_to_student: vis.cleanCode,
+          submission_kind: kind,
         },
       });
       router.back();
@@ -223,12 +225,13 @@ export default function NewAssignment() {
 
           <DateTimeField label="Teslim tarihi" value={deadline} onChange={setDeadline} presets={PRESETS} />
 
+          <SubmissionKindPicker value={kind} onChange={setKind} />
           <PrecheckSettings
             enabled={pre.enabled}
             limit={pre.limit}
             onChange={(enabled, limit) => setPre({ enabled, limit })}
           />
-          <StudentVisibility value={vis} onChange={setVis} />
+          <StudentVisibility value={vis} onChange={setVis} document={kind === "document"} />
 
           {err && <Text style={{ color: colors.danger, fontSize: 13, marginTop: 12 }}>{err}</Text>}
 

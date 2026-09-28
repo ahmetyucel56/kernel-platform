@@ -183,6 +183,9 @@ class Assignment(Base):
     show_clean_code_to_student: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=true()
     )
+    # Teslim türü: "code" (kod projesi, her tür dosya) | "document" (rapor/belge:
+    # PDF, DOCX, görsel, metin). Belge ödevinde Clean Code yerine belge denetimi yapılır.
+    submission_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="code", server_default="code")
 
 
 class Precheck(Base):
@@ -253,6 +256,8 @@ class SubmissionFile(Base):
     content: Mapped[str | None] = mapped_column(Text, nullable=True)  # binary ise NULL
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_binary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # PDF/DOCX'ten çıkarılan metin (yapay zekâ kontrolü ve arama için; dosyanın kendisi depoda)
+    extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 # --- Inceleme / yorum (akademisyen + AI ayni tabloda, author_type ile) ------

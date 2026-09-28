@@ -125,6 +125,7 @@ def create_assignment(
         precheck_limit=payload.precheck_limit,
         show_requirement_to_student=payload.show_requirement_to_student,
         show_clean_code_to_student=payload.show_clean_code_to_student,
+        submission_kind=payload.submission_kind,
     )
     db.add(assignment)
     db.flush()
@@ -196,6 +197,8 @@ def update_assignment(
         assignment.show_requirement_to_student = payload.show_requirement_to_student
     if payload.show_clean_code_to_student is not None:
         assignment.show_clean_code_to_student = payload.show_clean_code_to_student
+    if payload.submission_kind is not None:
+        assignment.submission_kind = payload.submission_kind
     db.commit()
     db.refresh(assignment)
     return _with_effective_deadline(db, [assignment], user)[0]

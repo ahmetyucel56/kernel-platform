@@ -16,6 +16,7 @@ import zipfile
 from dataclasses import dataclass
 
 from app.config import settings
+from app.lib import documents
 
 # Icerigi saklanmayacak / atlanacak dizin adlari.
 _SKIP_DIRS = {
@@ -42,6 +43,7 @@ class ExtractedFile:
     content: str | None  # metin ise icerik; binary/cok-buyuk ise None
     size_bytes: int
     is_binary: bool
+    extracted_text: str | None = None  # PDF/DOCX metni
 
 
 def _is_safe_path(name: str) -> bool:
@@ -143,6 +145,12 @@ def extract_zip(data: bytes) -> tuple[list[ExtractedFile], dict]:
 
         path = posixpath.normpath(name)
         raw = zf.read(info)
+
+        if documents.ext_of(path) in documents.DOC_EXT:
+            # Belge: ikili saklanır, metni çıkarılır (yapay zekâ kontrolü için)
+            files.append(ExtractedFile(path=path, content=None, size_bytes=info.file_size, is_binary=True,
+                                       extracted_text=documents.extract_text(path, raw)))
+            continue
 
         if info.file_size > settings.max_text_file_bytes:
             # Cok buyuk: icerik saklama, yalnizca metadata.

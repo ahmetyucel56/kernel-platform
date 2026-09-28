@@ -111,6 +111,7 @@ function UploadCard({ a }: { a: Assignment }) {
           busy={busy}
           disabled={past}
           onPick={onFiles}
+          document={a.submission_kind === "document"}
         />
         {latest && (
           <Link className="btn btn-ghost" to={`/gonderim/${latest.id}`}>
@@ -119,7 +120,9 @@ function UploadCard({ a }: { a: Assignment }) {
         )}
       </div>
       <p className="faint" style={{ fontSize: 12, margin: "6px 0 0" }}>
-        Dosyalarını tek tek, proje klasörünü ya da .zip olarak yükleyebilirsin (toplam 20 MB).
+        {a.submission_kind === "document"
+          ? "Raporunu PDF ya da DOCX olarak yükle; görsel (PNG/JPG) de ekleyebilirsin (toplam 20 MB)."
+          : "Dosyalarını tek tek, proje klasörünü ya da .zip olarak yükleyebilirsin (toplam 20 MB)."}
       </p>
       {msg && <p className="ok">{msg}</p>}
       {err && <p className="error">{err}</p>}
@@ -128,7 +131,7 @@ function UploadCard({ a }: { a: Assignment }) {
           {subs.length} sürüm · en son: v{latest.version_number} ({formatDate(latest.submitted_at)})
         </div>
       )}
-      {a.precheck_enabled && !past && <PrecheckPanel assignmentId={a.id} />}
+      {a.precheck_enabled && !past && <PrecheckPanel assignmentId={a.id} document={a.submission_kind === "document"} />}
     </div>
   );
 }

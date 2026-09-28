@@ -26,7 +26,10 @@ export function buildUploadForm(list: File[]): FormData | string {
   return form;
 }
 
-/** "Dosya seç" (bir veya birden fazla dosya, .zip dahil) + "Klasör seç". */
+/** Rapor/belge ödevinde seçicide gösterilen türler (sunucu da ayrıca denetler). */
+export const DOCUMENT_ACCEPT = ".pdf,.docx,.png,.jpg,.jpeg,.gif,.webp,.txt,.md";
+
+/** "Dosya seç" (bir veya birden fazla dosya, .zip dahil) + "Klasör seç" (kod ödevinde). */
 export function FilePickButtons({
   label,
   disabled,
@@ -34,6 +37,7 @@ export function FilePickButtons({
   onPick,
   primary = true,
   small = false,
+  document = false,
 }: {
   label: string;
   disabled?: boolean;
@@ -41,6 +45,7 @@ export function FilePickButtons({
   onPick: (files: File[]) => void;
   primary?: boolean;
   small?: boolean;
+  document?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const dirRef = useRef<HTMLInputElement>(null);
@@ -61,8 +66,10 @@ export function FilePickButtons({
     <span className="row" style={{ gap: 6, flexWrap: "wrap" }}>
       <label className={primary ? "btn btn-gold" : "btn"} style={style} title="Bir veya birden fazla dosya ya da .zip seç">
         {busy ? "Yükleniyor…" : label}
-        <input ref={fileRef} type="file" multiple onChange={handle} disabled={off} style={{ display: "none" }} />
+        <input ref={fileRef} type="file" multiple accept={document ? DOCUMENT_ACCEPT : undefined} onChange={handle}
+          disabled={off} style={{ display: "none" }} />
       </label>
+      {!document && (
       <label className="btn btn-ghost" style={style} title="Proje klasörünü olduğu gibi seç">
         Klasör seç
         <input
@@ -75,6 +82,7 @@ export function FilePickButtons({
           {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
         />
       </label>
+      )}
     </span>
   );
 }

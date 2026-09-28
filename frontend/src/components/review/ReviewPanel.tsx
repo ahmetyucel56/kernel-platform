@@ -17,6 +17,7 @@ export function ReviewPanel({
   comments,
   onCommentsChanged,
   hiddenFromStudent,
+  document = false,
 }: {
   submissionId: string;
   selectedPath: string | null;
@@ -24,6 +25,8 @@ export function ReviewPanel({
   comments: Comment[];
   onCommentsChanged: () => void;
   hiddenFromStudent?: string[];
+  /** Rapor/belge ödevi: Clean Code analizi yok */
+  document?: boolean;
 }) {
   const { user } = useAuth();
   const [score, setScore] = useState<Score | null>(null);
@@ -86,7 +89,7 @@ export function ReviewPanel({
 
       {/* AI Analiz Motoru — akademisyen tetikler; ogrenci salt-okunur gorur */}
       {canReview && (
-        <AiAnalysisPanel submissionId={submissionId} onAnalyzed={() => setAiTick((t) => t + 1)} hiddenFromStudent={hiddenFromStudent} />
+        <AiAnalysisPanel submissionId={submissionId} onAnalyzed={() => setAiTick((t) => t + 1)} hiddenFromStudent={hiddenFromStudent} document={document} />
       )}
       {user?.role === "student" && <AiAnalysisPanel submissionId={submissionId} readOnly />}
 

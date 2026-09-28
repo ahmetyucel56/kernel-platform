@@ -49,6 +49,11 @@ def _code_files(files: list[FileBlob]) -> list[FileBlob]:
     return [f for f in files if any(f.path.lower().endswith(e) for e in _CODE_EXT) and f.content]
 
 
+def _report_files(files: list[FileBlob]) -> list[FileBlob]:
+    """Rapor/belge teslimleri: PDF ve DOCX'ten çıkarılmış metin ile düz metin dosyaları."""
+    return [f for f in files if f.content and f.path.lower().endswith((".pdf", ".docx", ".txt"))]
+
+
 def _doc_files(files: list[FileBlob]) -> list[FileBlob]:
     """README ve metin dokumantasyonu (gereksinim kontrolunde 'README olmali' gibi maddeler icin)."""
     return [f for f in files if f.content and (
@@ -472,18 +477,21 @@ def _requirement_check(files: list[FileBlob], requirements: list[str]) -> dict:
     """
     code = _code_files(files)
     docs = _doc_files(files)
+    reports = _report_files(files)
     if not requirements:
         return _wrap_req({"met": [], "partial": [], "missing": [],
                           "note": "Bu ödev için tanımlanmış gereksinim yok."})
-    if not code and not docs:
+    if not code and not docs and not reports:
         return _wrap_req({
             "met": [], "partial": [],
-            "missing": [{"requirement": r, "note": "Analiz edilecek kod dosyası bulunamadı."}
+            "missing": [{"requirement": r, "note": "Analiz edilecek kod dosyası ya da okunabilir belge bulunamadı."}
                         for r in requirements],
-            "note": "Kod dosyası yok; hiçbir gereksinim doğrulanamadı.",
+            "note": "Kod dosyası ya da okunabilir belge yok; hiçbir gereksinim doğrulanamadı.",
         })
     if _use_mock():
-        return _requirement_heuristic(code + docs, requirements)
+        return _requirement_heuristic(code + docs + reports, requirements)
+    if not code and reports:
+        return _requirement_check_document(files, reports + docs, requirements)
 
     numbered = "\n".join(f"{i+1}. {r}" for i, r in enumerate(requirements))
     system = (
@@ -521,7 +529,7 @@ def _requirement_check(files: list[FileBlob], requirements: list[str]) -> dict:
         "ODEV GEREKSINIMLERI (her birini kodda kontrol et):\n" + numbered
         + "\n\nPROJEDEKI DOSYALAR:\n" + "\n".join(paths)
         + "\n\nOGRENCI KODU (kurallarla en ilgili dosyalar once):\n" + (code_ctx or "(kod dosyasi yok)")
-        + "\n\nDOKUMANTASYON:\n" + (_context(docs, budget=3000) or "(yok)")
+        + "\n\nDOKUMANTASYON:\n" + (_context(docs + reports, budget=6000 if reports else 3000) or "(yok)")
     )
     data = _ask_json(system, prompt, max_tokens=2600, required="items")
     items = data.get("items")
@@ -532,6 +540,43 @@ def _requirement_check(files: list[FileBlob], requirements: list[str]) -> dict:
     if outlined:
         buckets["note"] += (f" Proje büyük olduğu için {outlined} dosya yalnızca imzalarıyla "
                             "(fonksiyon/route satırları) incelendi.")
+    return _wrap_req(buckets)
+
+
+def _requirement_check_document(files: list[FileBlob], docs: list[FileBlob], requirements: list[str]) -> dict:
+    """Rapor/belge teslimi: her gereksinimi belgenin METNİNDE tek tek arar (kanıt = kısa alıntı)."""
+    numbered = "\n".join(f"{i+1}. {r}" for i, r in enumerate(requirements))
+    system = (
+        "Sen titiz ve nesnel bir değerlendiricisin. Sana bir ödevin GEREKSİNİMLERİ ve öğrencinin teslim "
+        "ettiği BELGE(LER)İN metni verilecek (PDF/DOCX'ten çıkarılmıştır; biçim ve görseller yoktur). "
+        "Her gereksinimi belgede TEK TEK ara ve kanıta dayalı karar ver. KURALLAR: "
+        "(1) Kanıt yoksa asla 'met' deme. "
+        "(2) status: 'met'=belgede tam ve istenen biçimde var; 'partial'=var ama eksik, yüzeysel ya da "
+        "istenen biçimde değil; 'missing'=belgede yok. "
+        "(3) evidence: belgeden KISA bir alıntı (en fazla ~20 kelime, tırnak içinde) ya da neden eksik olduğu. "
+        "(4) where: dosya adı ve varsa sayfa (ör. 'rapor.pdf s.2'). "
+        "(5) Verilen HER gereksinim için bir madde döndür, atlama. "
+        "(6) Her kuralı YAZILDIĞI KADAR değerlendir; kuralda istenmeyen beklentiler yüzünden 'partial' verme. "
+        "(7) Her gereksinim BAĞIMSIZDIR: bir eksik yalnızca ilgili maddede sayılır. "
+        "(8) Görsel, tablo biçimi, yazı tipi gibi metinden anlaşılamayan konularda karar veremiyorsan "
+        "'partial' de ve evidence'ta bunun metinden doğrulanamadığını yaz. "
+        "(9) Türkçe yaz. YALNIZCA şu JSON şemasıyla yanıt ver: "
+        '{"items":[{"requirement":"<madde metni>","status":"met|partial|missing",'
+        '"evidence":"<kısa alıntı ya da açıklama>","where":"<dosya s.X>"}]}'
+    )
+    paths = [f.path for f in files][:200]
+    prompt = (
+        "ÖDEV GEREKSİNİMLERİ (her birini belgede kontrol et):\n" + numbered
+        + "\n\nTESLİM EDİLEN DOSYALAR:\n" + "\n".join(paths)
+        + "\n\nBELGE METNİ:\n" + _context(docs, budget=24000)
+    )
+    data = _ask_json(system, prompt, max_tokens=2600, required="items")
+    items = data.get("items")
+    if not isinstance(items, list) or not items:
+        raise AIUnavailable("AI gereksinim maddesi dondurmedi")
+    buckets = _bucket_items(items, requirements)
+    buckets["note"] = ("Yapay zeka her gereksinimi belgenin metninde tek tek denetledi (kanıt: belgeden alıntı). "
+                       "Görseller ve biçimlendirme metinden değerlendirilemez.")
     return _wrap_req(buckets)
 
 

@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import difflib
 import io
+import posixpath
 import re
 import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy import func, select
@@ -21,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.deps import get_current_user
+from app.lib import documents
 from app.lib.upload import read_upload
 from app.lib.ziputil import ZipExtractError, extract_zip
 from app.models import (
@@ -38,6 +42,7 @@ from app.models import (
 )
 from app.models import User
 from app.schemas import (
+    PreviewOut,
     AnalysisOut,
     AnalyzeIn,
     ChatMessageIn,
@@ -161,6 +166,10 @@ def upload_submission(
         files, tree = extract_zip(data)
     except ZipExtractError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    if assignment.submission_kind == "document":
+        err = documents.document_kind_error([f.path for f in files])
+        if err:
+            raise HTTPException(status_code=400, detail=err)
 
     # Versiyon numarasi = mevcut en yuksek + 1
     max_version = db.scalar(
@@ -199,6 +208,7 @@ def upload_submission(
                 content=f.content,
                 size_bytes=f.size_bytes,
                 is_binary=f.is_binary,
+                extracted_text=f.extracted_text,
             )
         )
 
@@ -363,8 +373,127 @@ def get_submission_file(
     if f is None:
         raise HTTPException(status_code=404, detail="Dosya bulunamadi.")
     return FileContentOut(
-        path=f.path, content=f.content, is_binary=f.is_binary, size_bytes=f.size_bytes
+        path=f.path, content=f.content, is_binary=f.is_binary, size_bytes=f.size_bytes,
+        preview=documents.preview_kind(f.path) if f.is_binary else "none",
+        has_text=bool(f.extracted_text),
     )
+
+
+# --- Belge / görsel önizleme (indirmeden) ------------------------------------
+@lru_cache(maxsize=6)
+def _zip_bytes(key: str) -> bytes | None:
+    """Teslimin aslı (depodaki ZIP); aynı belgenin sayfaları için tekrar indirilmesin diye kısa önbellek."""
+    return get_storage_provider().load(key)
+
+
+def _original_bytes(sub: Submission, path: str) -> bytes | None:
+    key = sub.zip_storage_path or ""
+    if not key or key.startswith("("):
+        return None
+    try:
+        data = _zip_bytes(key)
+    except Exception:
+        return None
+    if not data:
+        return None
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        for info in zf.infolist():
+            if not info.is_dir() and posixpath.normpath(info.filename.replace("\\", "/")) == path:
+                if info.file_size > settings.max_uncompressed_bytes:
+                    return None
+                return zf.read(info)
+    return None
+
+
+# Üretilen PDF sayfaları yalnızca bellekte, kısa süre tutulur (depoya yazılmaz: teslim
+# silindiğinde arkada kopya kalmasın).
+_page_cache: dict[tuple[str, str, int], bytes] = {}
+
+
+def _render_page(sub: Submission, path: str, raw: bytes, page: int) -> bytes:
+    k = (sub.zip_storage_path or "", path, page)
+    if k not in _page_cache:
+        if len(_page_cache) >= 48:
+            _page_cache.pop(next(iter(_page_cache)))
+        _page_cache[k] = documents.pdf_page_png(raw, page)[0]
+    return _page_cache[k]
+
+
+@router.get("/submissions/{submission_id}/preview", response_model=PreviewOut)
+def preview_file(
+    submission_id: uuid.UUID,
+    path: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PreviewOut:
+    """Görsel, PDF ve DOCX'i indirmeden gösterir. Görsel ve PDF sayfaları kısa ömürlü,
+    yalnızca bu teslime özel imzalı adreslerden gelir (<img> başlık gönderemez)."""
+    sub = _get_submission_or_404(db, submission_id)
+    _ensure_can_view(db, sub, user)
+    if _file_content(db, submission_id, path) is None:
+        raise HTTPException(status_code=404, detail="Dosya bulunamadi.")
+    kind = documents.preview_kind(path)
+    if kind == "none":
+        return PreviewOut(kind="none", reason="Bu dosya türü için önizleme yok; 'Projeyi indir' ile indirebilirsin.")
+    raw = _original_bytes(sub, path)
+    if raw is None:
+        return PreviewOut(kind="none", reason="Dosyanın aslı bulunamadı; önizleme gösterilemiyor.")
+    token = create_download_token(str(sub.id), str(user.id), purpose="preview")
+    base = f"/submissions/{sub.id}/raw?path={quote(path)}&token={token}"
+    try:
+        if kind == "image":
+            size = documents.image_size(raw)
+            if size is None:
+                return PreviewOut(kind="none", reason="Görsel açılamadı.")
+            return PreviewOut(kind="image", url=base, width=size[0], height=size[1])
+        if kind == "pdf":
+            sizes = documents.pdf_page_sizes(raw)
+            count = documents.pdf_page_count(raw)
+            return PreviewOut(kind="pdf", page_count=count, truncated=count > len(sizes),
+                              pages=[{"url": f"{base}&page={i}", "width": w, "height": h}
+                                     for i, (w, h) in enumerate(sizes)])
+        return PreviewOut(kind="docx", blocks=documents.docx_blocks(raw))
+    except Exception:
+        return PreviewOut(kind="none", reason="Belge açılamadı (bozuk ya da desteklenmeyen biçim).")
+
+
+@router.get("/submissions/{submission_id}/raw")
+def raw_file(
+    submission_id: uuid.UUID,
+    path: str,
+    token: str,
+    page: int | None = None,
+    db: Session = Depends(get_db),
+) -> Response:
+    try:
+        payload = decode_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Önizleme bağlantısının süresi doldu; sayfayı yenile.")
+    if payload.get("purpose") != "preview" or payload.get("sub") != str(submission_id):
+        raise HTTPException(status_code=401, detail="Geçersiz önizleme bağlantısı.")
+    sub = _get_submission_or_404(db, submission_id)
+    try:
+        viewer = db.get(User, uuid.UUID(str(payload.get("uid"))))
+    except (ValueError, TypeError):
+        viewer = None
+    if viewer is None or not viewer.is_active:
+        raise HTTPException(status_code=401, detail="Geçersiz önizleme bağlantısı.")
+    _ensure_can_view(db, sub, viewer)  # yetki her istekte yeniden doğrulanır
+    kind = documents.preview_kind(path)
+    raw = _original_bytes(sub, path) if kind in ("image", "pdf") else None
+    if raw is None:
+        raise HTTPException(status_code=404, detail="Önizleme yok.")
+    headers = {"Cache-Control": "private, max-age=300", "Content-Disposition": "inline",
+               "X-Content-Type-Options": "nosniff"}
+    if kind == "image":
+        return Response(content=raw, media_type=documents.IMAGE_TYPES[documents.ext_of(path)], headers=headers)
+    if page is None or page < 0 or page >= documents.MAX_PDF_PAGES:
+        raise HTTPException(status_code=400, detail="Geçersiz sayfa.")
+    try:
+        png = _render_page(sub, path, raw, page)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Sayfa bulunamadı.")
+    return Response(content=png, media_type="image/png", headers=headers)
 
 
 # --- Diff -------------------------------------------------------------------
@@ -578,7 +707,8 @@ def _load_files(db: Session, submission_id: uuid.UUID) -> list[FileBlob]:
     rows = db.scalars(
         select(SubmissionFile).where(SubmissionFile.submission_id == submission_id)
     ).all()
-    return [FileBlob(path=r.path, content=r.content or "") for r in rows]
+    # Belgelerde (PDF/DOCX) yapay zekâ çıkarılan metni okur
+    return [FileBlob(path=r.path, content=r.content or r.extracted_text or "") for r in rows]
 
 
 def _latest_submissions_of_others(
@@ -613,6 +743,8 @@ def analyze_submission(
     files = _load_files(db, submission_id)
 
     matches_data: list[dict] = []
+    if payload.analysis_type == ana.CLEAN_CODE and assignment.submission_kind == "document":
+        raise HTTPException(status_code=400, detail="Bu bir rapor/belge ödevi; Clean Code analizi uygulanmaz.")
     if payload.analysis_type == ana.CLEAN_CODE:
         result = ana.clean_code(files)
     elif payload.analysis_type == ana.REQUIREMENT_CHECK:

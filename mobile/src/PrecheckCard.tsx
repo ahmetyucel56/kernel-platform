@@ -4,6 +4,7 @@ import * as DocumentPicker from "expo-document-picker";
 import {
   api,
   ApiError,
+  DOCUMENT_MIME,
   runPrecheck,
   type PrecheckResult,
   type PrecheckStatus,
@@ -20,7 +21,7 @@ function fmt(iso: string) {
 }
 
 /** Teslim öncesi ön kontrol (web'deki PrecheckPanel ile aynı). Teslim oluşturmaz. */
-export function PrecheckCard({ assignmentId }: { assignmentId: string }) {
+export function PrecheckCard({ assignmentId, document = false }: { assignmentId: string; document?: boolean }) {
   const [st, setSt] = useState<PrecheckStatus | null>(null);
   const [result, setResult] = useState<PrecheckResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,7 +40,7 @@ export function PrecheckCard({ assignmentId }: { assignmentId: string }) {
     setErr(null);
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
+        type: document ? DOCUMENT_MIME : "*/*",
         copyToCacheDirectory: true,
         multiple: true,
       });
@@ -67,7 +68,7 @@ export function PrecheckCard({ assignmentId }: { assignmentId: string }) {
     <View style={{ backgroundColor: colors.bg3, borderRadius: radius.sm, padding: 12, marginTop: 12 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><Sparkle size={15} /><Text style={{ color: colors.ink, fontSize: 14.5, fontWeight: "700" }}>Teslim öncesi ön kontrol</Text></View>
       <Text style={{ color: colors.muted, fontSize: 12.5, marginTop: 2 }}>
-        Kodunu kurallara göre kontrol et; bu bir teslim değildir, notlanmaz.
+        {document ? "Raporunu" : "Kodunu"} kurallara göre kontrol et; bu bir teslim değildir, notlanmaz.
       </Text>
       <View style={{ marginTop: 10 }}>
         <Btn
