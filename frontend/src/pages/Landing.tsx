@@ -225,7 +225,7 @@ export function Landing() {
             <div className="card lp-who-card">
               <span className="tag tag-blue">Öğrenci</span>
               <ul className="lp-check">
-                <li>Projeni ZIP olarak yükle; her yükleme yeni bir sürüm olur.</li>
+                <li>Dosyalarını, proje klasörünü ya da ZIP'ini yükle; her yükleme yeni bir sürüm olur.</li>
                 <li>Teslim etmeden önce ön kontrolle eksiklerini gör (hoca izin verirse).</li>
                 <li>Hocanın satır yorumlarını, notunu ve AI geri bildirimini tek yerde oku.</li>
                 <li>AI mentora kodunu sor; cevabı vermez, doğru yöne yönlendirir.</li>
@@ -402,7 +402,7 @@ const JOURNEY: { who: keyof typeof ROLE_LABEL; title: string; body: string }[] =
   {
     who: "ogr",
     title: "Projesini yükler",
-    body: "ZIP olarak yükler; her yükleme yeni bir sürüm olur. Süre dolduysa yükleme kapanır, hoca uzatırsa yeniden açılır.",
+    body: "Dosyalarını, klasörünü ya da ZIP'ini yükler; her yükleme yeni bir sürüm olur. Süre dolduysa yükleme kapanır, hoca uzatırsa yeniden açılır.",
   },
   {
     who: "ai",
@@ -440,7 +440,7 @@ const FAQ = [
   },
   {
     q: "Hangi dillerle çalışır?",
-    a: "Python, JavaScript/TypeScript, Java, C/C++, C#, Go, PHP gibi yaygın dillerde yazılmış, ZIP olarak yüklenen projelerle. README gibi belgeler de kural kontrolünde okunur.",
+    a: "Python, JavaScript/TypeScript, Java, C/C++, C#, Go, PHP gibi yaygın dillerde yazılmış, dosya, klasör ya da ZIP olarak yüklenen projelerle. README gibi belgeler de kural kontrolünde okunur.",
   },
   {
     q: "OBS ile bağlantılı mı?",

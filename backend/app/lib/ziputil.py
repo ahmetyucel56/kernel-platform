@@ -130,7 +130,7 @@ def extract_zip(data: bytes) -> tuple[list[ExtractedFile], dict]:
             continue
 
         if not _is_safe_path(name):
-            raise ZipExtractError(f"Guvenli olmayan dosya yolu: {info.filename!r}")
+            raise ZipExtractError(f"Güvenli olmayan dosya yolu: {info.filename!r}")
 
         if _skip(name):
             continue
@@ -163,7 +163,7 @@ def extract_zip(data: bytes) -> tuple[list[ExtractedFile], dict]:
         )
 
     if not files:
-        raise ZipExtractError("ZIP icinde islenebilir dosya bulunamadi.")
+        raise ZipExtractError("Yüklenenler arasında işlenebilir dosya bulunamadı.")
 
     files.sort(key=lambda f: f.path)
     tree = _build_tree(files)

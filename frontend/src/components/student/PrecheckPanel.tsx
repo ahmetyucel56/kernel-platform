@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, apiUpload, ApiError } from "../../api/client";
 import type { PrecheckResult, PrecheckStatus, ReqStatus } from "../../api/types";
 import { formatDate } from "../../lib/format";
 import { IconSparkle } from "../icons";
+import { buildUploadForm, FilePickButtons } from "./FilePickButtons";
 
 const OK = "#4ec9b0";
 const BAD = "#ff6b6b";
@@ -15,7 +16,6 @@ export function PrecheckPanel({ assignmentId }: { assignmentId: string }) {
   const [result, setResult] = useState<PrecheckResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api<PrecheckStatus>(`/assignments/${assignmentId}/precheck`)
@@ -26,18 +26,12 @@ export function PrecheckPanel({ assignmentId }: { assignmentId: string }) {
       .catch(() => {});
   }, [assignmentId]);
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  async function onFiles(list: File[]) {
     setErr(null);
-    if (!f.name.toLowerCase().endsWith(".zip")) {
-      setErr("Yalnızca .zip dosyası yükleyebilirsin.");
-      return;
-    }
+    const form = buildUploadForm(list);
+    if (typeof form === "string") return setErr(form);
     setBusy(true);
     try {
-      const form = new FormData();
-      form.append("file", f);
       const res = await apiUpload<{ result: PrecheckResult; status: PrecheckStatus }>(
         `/assignments/${assignmentId}/precheck`,
         form
@@ -48,7 +42,6 @@ export function PrecheckPanel({ assignmentId }: { assignmentId: string }) {
       setErr(e instanceof ApiError ? e.message : "Ön kontrol yapılamadı.");
     } finally {
       setBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
@@ -68,13 +61,14 @@ export function PrecheckPanel({ assignmentId }: { assignmentId: string }) {
             Kodunu kurallara göre kontrol et; bu bir teslim değildir, notlanmaz.
           </div>
         </div>
-        <label
-          className="btn"
-          style={{ cursor: canRun ? "pointer" : "default", opacity: canRun ? 1 : 0.55, padding: "6px 12px", fontSize: 13 }}
-        >
-          {busy ? "Kontrol ediliyor…" : "ZIP ile kontrol et"}
-          <input ref={fileRef} type="file" accept=".zip" onChange={onFile} disabled={!canRun} style={{ display: "none" }} />
-        </label>
+        <FilePickButtons
+          label={busy ? "Kontrol ediliyor…" : "Dosyayla kontrol et"}
+          disabled={!canRun && !busy}
+          busy={busy}
+          onPick={onFiles}
+          primary={false}
+          small
+        />
       </div>
       <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>
         {st.available

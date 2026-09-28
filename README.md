@@ -150,3 +150,7 @@ mobile/
   app/                   # expo-router ekranları
   src/                   # api istemcisi, ortak bileşenler (ClassAiSheet, PrecheckCard...)
 ```
+
+## Lisans
+
+Tüm hakları saklıdır. Bu depo yalnızca incelenmek için herkese açıktır; kod izinsiz kopyalanamaz, kullanılamaz veya çalıştırılamaz. Ayrıntı: [LICENSE](LICENSE).

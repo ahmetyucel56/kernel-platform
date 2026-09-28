@@ -85,7 +85,7 @@ export default function Assignments() {
 
       {!isAcademician && !noClasses && (
         <Muted style={{ fontSize: 12, marginTop: 6 }}>
-          Projeni .zip olarak yükle; her teslim yeni bir sürüm olur.
+          Dosyalarını (birden fazla seçebilirsin) ya da .zip'ini yükle; her teslim yeni bir sürüm olur.
         </Muted>
       )}
     </Screen>
@@ -140,18 +140,16 @@ function AssignmentCard({ a }: { a: Assignment }) {
     setMsg(null);
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: ["application/zip", "application/x-zip-compressed", "application/octet-stream"],
+        type: "*/*",
         copyToCacheDirectory: true,
-        multiple: false,
+        multiple: true,
       });
-      if (res.canceled) return;
-      const asset = res.assets[0];
-      if (!asset.name.toLowerCase().endsWith(".zip")) {
-        setMsg({ kind: "err", text: "Yalnızca .zip dosyası yükleyebilirsin." });
-        return;
-      }
+      if (res.canceled || !res.assets.length) return;
       setUploading(true);
-      await uploadSubmission(a.id, { uri: asset.uri, name: asset.name, mimeType: asset.mimeType });
+      await uploadSubmission(
+        a.id,
+        res.assets.map((f) => ({ uri: f.uri, name: f.name, mimeType: f.mimeType, size: f.size }))
+      );
       setMsg({ kind: "ok", text: "Yüklendi. Yeni sürüm oluşturuldu." });
       loadSubs();
     } catch (e) {
@@ -187,8 +185,8 @@ function AssignmentCard({ a }: { a: Assignment }) {
               : uploading
                 ? "Yükleniyor…"
                 : subs.length > 0
-                  ? "Yeni sürüm yükle (.zip)"
-                  : "Ödev yükle (.zip)"
+                  ? "Yeni sürüm yükle"
+                  : "Ödev yükle"
           }
           onPress={pickAndUpload}
           variant="gold"

@@ -114,29 +114,34 @@ export async function api<T = unknown>(
   return (await res.json()) as T;
 }
 
-type PickedFile = { uri: string; name: string; mimeType?: string | null };
+export type PickedFile = { uri: string; name: string; mimeType?: string | null; size?: number | null };
 
-/** ZIP gönderimi (multipart). RN'de dosya {uri,name,type} olarak gönderilir. */
-export function uploadSubmission(assignmentId: string, file: PickedFile): Promise<SubmissionDetail> {
-  return uploadZip<SubmissionDetail>(`/assignments/${assignmentId}/submissions`, file);
+/** Teslim (multipart): tek .zip ya da bir/birden fazla normal dosya (sunucu ZIP'e paketler). */
+export function uploadSubmission(assignmentId: string, files: PickedFile[]): Promise<SubmissionDetail> {
+  return uploadFiles<SubmissionDetail>(`/assignments/${assignmentId}/submissions`, files);
 }
 
 /** Teslim öncesi ön kontrol (teslim oluşturmaz). */
 export function runPrecheck(
   assignmentId: string,
-  file: PickedFile
+  files: PickedFile[]
 ): Promise<{ result: PrecheckResult; status: PrecheckStatus }> {
-  return uploadZip(`/assignments/${assignmentId}/precheck`, file);
+  return uploadFiles(`/assignments/${assignmentId}/precheck`, files);
 }
 
-async function uploadZip<T>(path: string, file: PickedFile): Promise<T> {
+async function uploadFiles<T>(path: string, files: PickedFile[]): Promise<T> {
   const t = await getToken();
+  const total = files.reduce((s, f) => s + (f.size ?? 0), 0);
+  if (total > 20 * 1024 * 1024) throw new ApiError(400, "Dosyalar toplamda en fazla 20 MB olabilir.");
   const form = new FormData();
-  form.append("file", {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType || "application/zip",
-  } as unknown as Blob);
+  const singleZip = files.length === 1 && files[0].name.toLowerCase().endsWith(".zip");
+  for (const f of files) {
+    form.append(singleZip ? "file" : "files", {
+      uri: f.uri,
+      name: f.name,
+      type: f.mimeType || "application/octet-stream",
+    } as unknown as Blob);
+  }
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",

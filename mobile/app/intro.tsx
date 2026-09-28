@@ -36,7 +36,7 @@ const PAGES: Page[] = [
     title: ["Teslim etmeden önce ", "eksiğini gör."],
     icon: "upload-cloud",
     points: [
-      "Projeni ZIP olarak yükle; her yükleme yeni bir sürüm olur.",
+      "Dosyalarını ya da ZIP'ini yükle; her yükleme yeni bir sürüm olur.",
       "Hoca izin verirse ön kontrolle hangi kuralın eksik olduğunu önceden öğren.",
       "Satır yorumlarını, notunu ve AI geri bildirimini oku; AI mentora sor.",
     ],

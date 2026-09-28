@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user
+from app.lib.upload import read_upload
 from app.lib.ziputil import ZipExtractError, extract_zip
 from app.models import Assignment, Enrollment, Precheck, User
 from app.routers.insights import _items_of
@@ -105,7 +106,8 @@ def precheck_status(
 @router.post("/assignments/{assignment_id}/precheck")
 def run_precheck(
     assignment_id: uuid.UUID,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    files: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
@@ -120,11 +122,7 @@ def run_precheck(
                    "Biraz sonra tekrar deneyebilirsin.",
         )
 
-    if not (file.filename or "").lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Yalnızca .zip dosyası yükleyebilirsin.")
-    data = file.file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Boş dosya.")
+    data = read_upload(file, files)
     try:
         files, _tree = extract_zip(data)
     except ZipExtractError as exc:

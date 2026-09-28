@@ -4,6 +4,7 @@ import { api, apiUpload, ApiError } from "../../api/client";
 import type { Assignment, ClassOut, SubmissionListItem } from "../../api/types";
 import { dueLabel, dueOf, formatDate, isPast } from "../../lib/format";
 import { PrecheckPanel } from "../../components/student/PrecheckPanel";
+import { buildUploadForm, FilePickButtons } from "../../components/student/FilePickButtons";
 
 export function MyAssignments() {
   const [items, setItems] = useState<{ cls: ClassOut; assignments: Assignment[] }[]>([]);
@@ -56,26 +57,19 @@ function UploadCard({ a }: { a: Assignment }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   function refresh() {
     api<SubmissionListItem[]>(`/assignments/${a.id}/submissions`).then(setSubs).catch(() => {});
   }
   useEffect(refresh, [a.id]);
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  async function onFiles(list: File[]) {
     setErr(null);
     setMsg(null);
-    if (!f.name.toLowerCase().endsWith(".zip")) {
-      setErr("Yalnızca .zip dosyası yükleyebilirsin.");
-      return;
-    }
+    const form = buildUploadForm(list);
+    if (typeof form === "string") return setErr(form);
     setBusy(true);
     try {
-      const form = new FormData();
-      form.append("file", f);
       const created = await apiUpload<SubmissionListItem>(`/assignments/${a.id}/submissions`, form);
       setMsg(`v${created.version_number} yüklendi.`);
       refresh();
@@ -83,7 +77,6 @@ function UploadCard({ a }: { a: Assignment }) {
       setErr(e instanceof ApiError ? e.message : "Yükleme başarısız.");
     } finally {
       setBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
@@ -113,23 +106,21 @@ function UploadCard({ a }: { a: Assignment }) {
       )}
       <hr />
       <div className="row between" style={{ flexWrap: "wrap", gap: 8 }}>
-        <label className="btn btn-gold" style={{ cursor: past || busy ? "default" : "pointer", opacity: past ? 0.6 : 1 }}>
-          {busy ? "Yükleniyor…" : latest ? "Yeni sürüm yükle (.zip)" : "ZIP yükle"}
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".zip"
-            onChange={onFile}
-            disabled={busy || past}
-            style={{ display: "none" }}
-          />
-        </label>
+        <FilePickButtons
+          label={latest ? "Yeni sürüm yükle" : "Dosya yükle"}
+          busy={busy}
+          disabled={past}
+          onPick={onFiles}
+        />
         {latest && (
           <Link className="btn btn-ghost" to={`/gonderim/${latest.id}`}>
             Son sürümü görüntüle (v{latest.version_number})
           </Link>
         )}
       </div>
+      <p className="faint" style={{ fontSize: 12, margin: "6px 0 0" }}>
+        Dosyalarını tek tek, proje klasörünü ya da .zip olarak yükleyebilirsin (toplam 20 MB).
+      </p>
       {msg && <p className="ok">{msg}</p>}
       {err && <p className="error">{err}</p>}
       {subs.length > 0 && (

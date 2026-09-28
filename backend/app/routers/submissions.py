@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.deps import get_current_user
+from app.lib.upload import read_upload
 from app.lib.ziputil import ZipExtractError, extract_zip
 from app.models import (
     AiAnalysis,
@@ -125,10 +126,12 @@ def _ensure_can_view(db: Session, sub: Submission, user: User) -> None:
 @router.post("/assignments/{assignment_id}/submissions", response_model=SubmissionOut, status_code=201)
 def upload_submission(
     assignment_id: uuid.UUID,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    files: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SubmissionOut:
+    """Teslim: tek bir .zip YA DA normal dosyalar / klasor (sunucuda ZIP'e paketlenir)."""
     if user.role != "student":
         raise HTTPException(status_code=403, detail="Yalnizca ogrenciler gonderim yukleyebilir.")
 
@@ -152,13 +155,7 @@ def upload_submission(
     if now > deadline:
         raise HTTPException(status_code=403, detail="Teslim suresi doldu. Yukleme kapali.")
 
-    # Dosya turu / boyut
-    filename = (file.filename or "").lower()
-    if not filename.endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Yalnizca .zip dosyasi yukleyebilirsiniz.")
-    data = file.file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Bos dosya.")
+    data = read_upload(file, files)
 
     try:
         files, tree = extract_zip(data)

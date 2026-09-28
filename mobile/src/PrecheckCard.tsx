@@ -39,18 +39,16 @@ export function PrecheckCard({ assignmentId }: { assignmentId: string }) {
     setErr(null);
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: ["application/zip", "application/x-zip-compressed", "application/octet-stream"],
+        type: "*/*",
         copyToCacheDirectory: true,
-        multiple: false,
+        multiple: true,
       });
-      if (res.canceled) return;
-      const asset = res.assets[0];
-      if (!asset.name.toLowerCase().endsWith(".zip")) {
-        setErr("Yalnızca .zip dosyası yükleyebilirsin.");
-        return;
-      }
+      if (res.canceled || !res.assets.length) return;
       setBusy(true);
-      const out = await runPrecheck(assignmentId, { uri: asset.uri, name: asset.name, mimeType: asset.mimeType });
+      const out = await runPrecheck(
+        assignmentId,
+        res.assets.map((f) => ({ uri: f.uri, name: f.name, mimeType: f.mimeType, size: f.size }))
+      );
       setResult(out.result);
       setSt(out.status);
     } catch (e) {
@@ -73,7 +71,7 @@ export function PrecheckCard({ assignmentId }: { assignmentId: string }) {
       </Text>
       <View style={{ marginTop: 10 }}>
         <Btn
-          title={busy ? "Kontrol ediliyor…" : "ZIP seç ve kontrol et"}
+          title={busy ? "Kontrol ediliyor…" : "Dosya seç ve kontrol et"}
           variant="ghost"
           onPress={pickAndCheck}
           disabled={!canRun}
