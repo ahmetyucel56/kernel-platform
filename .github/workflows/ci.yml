@@ -1,0 +1,66 @@
+# Her gönderimde (push) ve PR'da: backend testleri + web ve mobil tip denetimi/derleme.
+# Render'da "Auto-Deploy: After CI Checks Pass" seçiliyse, bu kontroller geçmeden
+# canlıya çıkılmaz. Testler geçici SQLite + sahte AI ile çalışır; canlı veritabanına
+# ve ücretli AI'ya DOKUNMAZ (gizli anahtar gerekmez).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend testleri
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -p no:warnings
+
+  web:
+    name: Web (tip denetimi + derleme)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  mobile:
+    name: Mobil (tip denetimi)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
