@@ -12,7 +12,6 @@ from app.models import (
     AiAnalysis,
     Assignment,
     Class,
-    Course,
     Enrollment,
     Submission,
     User,
@@ -50,13 +49,11 @@ def me_summary(
         enr = db.scalar(select(Enrollment).where(Enrollment.student_id == user.id))
         if enr:
             cls = db.get(Class, enr.class_id)
-            course = db.get(Course, cls.course_id) if cls else None
-            class_label = course.name if course else (cls.name if cls else None)
+            class_label = cls.name if cls else None
     elif user.role == "academician":
         cls = db.scalar(select(Class).where(Class.academician_id == user.id))
         if cls:
-            course = db.get(Course, cls.course_id)
-            class_label = course.name if course else cls.name
+            class_label = cls.name
     return MeSummary(
         full_name=user.full_name,
         role=user.role,  # type: ignore[arg-type]

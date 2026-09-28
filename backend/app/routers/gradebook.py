@@ -10,6 +10,7 @@ Indirme, proje ZIP'indeki gibi 5 dk gecerli imzali link ile (purpose=gradebook).
 from __future__ import annotations
 
 import io
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import require_roles
+from app.lib.classinfo import course_names
 from app.models import AiAnalysis, Assignment, Class, Enrollment, Score, Submission, User
 from app.routers.insights import _latest_req_analyses, _owned_class
 from app.routers.submissions import _aware, _effective_deadline, _slug
@@ -113,29 +115,48 @@ def _rows(db: Session, cls: Class):
     return students, assignments, cells
 
 
+def _sheet_title(name: str, used: set[str]) -> str:
+    """Excel sayfa adı: en fazla 31 karakter, []:*?/\\ yok, tekrar yok."""
+    base = re.sub(r"[\[\]:*?/\\]", " ", name).strip()[:31] or "Notlar"
+    title, n = base, 2
+    while title in used:
+        suffix = f" ({n})"
+        title, n = base[: 31 - len(suffix)] + suffix, n + 1
+    used.add(title)
+    return title
+
+
 def build_gradebook(db: Session, cls: Class) -> bytes:
     students, assignments, cells = _rows(db, cls)
+    cnames = course_names(db, [a.course_id for a in assignments])
     wb = Workbook()
 
-    # --- Notlar ---
-    ws = wb.active
-    ws.title = "Notlar"
-    head = ["Öğrenci No", "Ad Soyad"] + [a.title for a in assignments] + ["Ortalama*"]
-    ws.append(head)
-    for st in students:
-        scores = [cells[(st.id, a.id)]["score"] for a in assignments]
-        given = [s for s in scores if s is not None]
-        avg = round(sum(given) / len(given), 1) if given else None
-        ws.append([st.school_no or "", st.full_name] + scores + [avg])
-    ws.append([])
-    ws.append(["* Ortalama yalnızca not verilmiş ödevlerden hesaplanır. Boş hücre: not verilmemiş "
-               "(teslim edilmemiş ya da henüz notlanmamış)."])
-    ws.append([f"{cls.name} · Oluşturulma: {datetime.now(TR):%d.%m.%Y %H:%M}"])
-    _style(ws, len(head), widths=[14, 24] + [18] * len(assignments) + [12])
+    # --- Notlar: her ders ayrı sayfa (ortalama dersin kendi ödevlerinden) ---
+    groups: dict[str, list] = {}
+    for a in assignments:
+        groups.setdefault(cnames.get(a.course_id) or "Diğer", []).append(a)
+    if not groups:
+        groups["Notlar"] = []
+    used: set[str] = set()
+    for i, (course, items) in enumerate(sorted(groups.items())):
+        ws = wb.active if i == 0 else wb.create_sheet()
+        ws.title = _sheet_title("Notlar" if len(groups) == 1 else course, used)
+        head = ["Öğrenci No", "Ad Soyad"] + [a.title for a in items] + ["Ortalama*"]
+        ws.append(head)
+        for st in students:
+            scores = [cells[(st.id, a.id)]["score"] for a in items]
+            given = [s for s in scores if s is not None]
+            avg = round(sum(given) / len(given), 1) if given else None
+            ws.append([st.school_no or "", st.full_name] + scores + [avg])
+        ws.append([])
+        ws.append(["* Ortalama yalnızca bu dersin not verilmiş ödevlerinden hesaplanır. Boş hücre: not "
+                   "verilmemiş (teslim edilmemiş ya da henüz notlanmamış)."])
+        ws.append([f"{cls.name} · {course} · Oluşturulma: {datetime.now(TR):%d.%m.%Y %H:%M}"])
+        _style(ws, len(head), widths=[14, 24] + [18] * len(items) + [12])
 
     # --- Ayrinti ---
     wd = wb.create_sheet("Ayrıntı")
-    dh = ["Öğrenci No", "Ad Soyad", "Ödev", "Son teslim tarihi", "Durum", "Son sürüm",
+    dh = ["Öğrenci No", "Ad Soyad", "Ders", "Ödev", "Son teslim tarihi", "Durum", "Son sürüm",
           "Teslim zamanı", "Not", "Not verilen sürüm", "AI kapsam (%)", "Clean Code",
           "En yüksek benzerlik (%)", "Uyarı"]
     wd.append(dh)
@@ -143,7 +164,8 @@ def build_gradebook(db: Session, cls: Class) -> bytes:
         for a in assignments:
             c = cells[(st.id, a.id)]
             sub = c["sub"]
-            wd.append([st.school_no or "", st.full_name, a.title, _local(a.deadline_at), c["status"],
+            wd.append([st.school_no or "", st.full_name, cnames.get(a.course_id) or "", a.title,
+                       _local(a.deadline_at), c["status"],
                        sub.version_number if sub else None, _local(sub.submitted_at) if sub else None,
                        c["score"], c["graded_version"], c["coverage"], c["clean"], c["similarity"],
                        " · ".join(c["warnings"])])
@@ -151,9 +173,9 @@ def build_gradebook(db: Session, cls: Class) -> bytes:
                 for col in range(1, len(dh) + 1):
                     wd.cell(row=wd.max_row, column=col).fill = WARN_FILL
     for row in wd.iter_rows(min_row=2):
-        for idx in (3, 6):  # tarih sutunlari
+        for idx in (4, 7):  # tarih sutunlari
             row[idx].number_format = "dd.mm.yyyy hh:mm"
-    _style(wd, len(dh), widths=[14, 22, 30, 17, 16, 10, 17, 8, 10, 12, 11, 14, 50])
+    _style(wd, len(dh), widths=[14, 22, 22, 30, 17, 16, 10, 17, 8, 10, 12, 11, 14, 50])
 
     buf = io.BytesIO()
     wb.save(buf)

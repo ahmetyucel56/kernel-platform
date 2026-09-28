@@ -21,6 +21,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.lib.ziputil import _build_tree, ExtractedFile
+from app.lib.classinfo import attach_course
 from app.models import (
     Assignment,
     Class,
@@ -663,10 +664,11 @@ def seed_demo(db: Session, academician: User, course_id, department_id, make_use
         return None
     now = datetime.now(timezone.utc)
     if cls is None:
-        cls = Class(course_id=course_id, academician_id=academician.id,
+        cls = Class(department_id=department_id, academician_id=academician.id,
                     name=DEMO_CLASS_NAME, term="2025-Güz")
         db.add(cls)
         db.flush()
+    attach_course(db, cls, course_id)
     comm = db.scalar(select(Community).where(Community.scope_ref_id == cls.id))
     if comm is None:
         comm = Community(name=f"{cls.name} — Sınıf", scope="class", scope_ref_id=cls.id,
@@ -694,7 +696,7 @@ def seed_demo(db: Session, academician: User, course_id, department_id, make_use
     asg: dict[str, Assignment] = {}
     for key, a in ASSIGNMENTS.items():
         deadline = now + timedelta(days=a["days"])
-        obj = Assignment(class_id=cls.id, title=a["title"], description=a["description"],
+        obj = Assignment(class_id=cls.id, course_id=course_id, title=a["title"], description=a["description"],
                          requirements_json=a["requirements"], deadline_at=deadline,
                          created_by=academician.id, created_at=deadline - timedelta(days=10),
                          precheck_enabled=bool(a.get("precheck")), precheck_limit=3)

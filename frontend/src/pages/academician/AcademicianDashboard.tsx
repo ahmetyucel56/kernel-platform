@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, ApiError } from "../../api/client";
-import type { Course, Department, OverviewClass, TeachingOverview } from "../../api/types";
+import type { ClassOut, Course, Department, OverviewClass, TeachingOverview } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
 import { ClassAiModal } from "../../components/review/ClassAiModal";
 import { IconAlert, IconCheck, IconPlus, IconSparkle, IconX } from "../../components/icons";
+
+/** Sınıf sayfasında "Ödev ver" formunu açık getirir. */
+const giveAssignmentUrl = (classId: string, courseId?: string) =>
+  `/sinif/${classId}?yeni=1${courseId ? `&ders=${courseId}` : ""}`;
 import { dayMonth, firstName, timeLeft, todayLabel } from "../../lib/format";
 
 export function AcademicianDashboard() {
@@ -17,6 +21,7 @@ export function AcademicianDashboard() {
   const [err, setErr] = useState<string | null>(null);
   const [aiClass, setAiClass] = useState<OverviewClass | null>(null);
   const [creating, setCreating] = useState(false);
+  const [picking, setPicking] = useState(false); // "Ödev ver": hangi sınıfa?
 
   async function refresh() {
     setErr(null);
@@ -46,6 +51,12 @@ export function AcademicianDashboard() {
   const att = ov?.attention;
   const goAssignment = (classId: string, assignmentId: string) =>
     navigate(`/sinif/${classId}?odev=${assignmentId}`);
+  const giveAssignment = () => {
+    const classes = ov?.classes ?? [];
+    if (classes.length === 0) setCreating(true);
+    else if (classes.length === 1) navigate(giveAssignmentUrl(classes[0].id));
+    else setPicking(true);
+  };
 
   return (
     <div style={{ paddingBottom: 24 }}>
@@ -57,10 +68,16 @@ export function AcademicianDashboard() {
             <span className="accent">{name ? `${name}${user?.role === "academician" ? " Hocam" : ""}.` : "Hocam."}</span>
           </h1>
         </div>
-        <button className="btn btn-primary" onClick={() => setCreating(true)}>
-          <IconPlus />
-          Yeni sınıf
-        </button>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn" onClick={() => setCreating(true)}>
+            <IconPlus />
+            Yeni sınıf
+          </button>
+          <button className="btn btn-primary" onClick={giveAssignment}>
+            <IconPlus />
+            Ödev ver
+          </button>
+        </div>
       </div>
 
       {err && <p className="error">{err}</p>}
@@ -112,7 +129,10 @@ export function AcademicianDashboard() {
           <h2 className="eyebrow" style={{ margin: 0 }}>Sınıflarım</h2>
           {ov && ov.classes.length === 0 && (
             <div className="card">
-              <p className="muted" style={{ marginTop: 0 }}>Henüz sınıfın yok.</p>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Henüz sınıfın yok. Bölümün için bir kez sınıf oluştur (ör. Bilgisayar Programcılığı); sonra
+                derslerini ekleyip ödevleri o sınıfa verirsin.
+              </p>
               <button className="btn btn-primary" onClick={() => setCreating(true)}>
                 <IconPlus />
                 İlk sınıfını oluştur
@@ -149,7 +169,7 @@ export function AcademicianDashboard() {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{u.title}</div>
                       <div className="muted" style={{ fontSize: 12.5 }}>
-                        {u.class_name} · {u.submitted}/{u.enrolled} teslim
+                        {[u.class_name, u.course_name].filter(Boolean).join(" · ")} · {u.submitted}/{u.enrolled} teslim
                       </div>
                     </div>
                   </Link>
@@ -166,6 +186,34 @@ export function AcademicianDashboard() {
         </aside>
       </div>
 
+      {picking && ov && (
+        <div className="modal-backdrop" onClick={() => setPicking(false)}>
+          <div className="modal" role="dialog" aria-label="Ödev ver" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <b style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Hangi sınıfa ödev vereceksin?</b>
+              <button className="btn btn-ghost icon-btn btn-icon-only" aria-label="Kapat" onClick={() => setPicking(false)}>
+                <IconX />
+              </button>
+            </div>
+            <div className="modal-body stack" style={{ gap: 8 }}>
+              {ov.classes.map((c) => (
+                <button
+                  key={c.id}
+                  className="asg-item"
+                  onClick={() => navigate(giveAssignmentUrl(c.id))}
+                  style={{ textAlign: "left" }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 15 }}>{c.name}</div>
+                  <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
+                    {c.courses.length ? c.courses.map((x) => x.name).join(", ") : "Henüz ders eklenmedi"} · {c.student_count} öğrenci
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {aiClass && <ClassAiModal classId={aiClass.id} className={aiClass.name} onClose={() => setAiClass(null)} />}
 
       {creating && (
@@ -181,9 +229,9 @@ export function AcademicianDashboard() {
               <CreateClassFlow
                 departments={departments}
                 courses={courses}
-                onDone={() => {
+                onDone={(id) => {
                   setCreating(false);
-                  refresh();
+                  navigate(`/sinif/${id}`);
                 }}
               />
             </div>
@@ -207,7 +255,7 @@ function GettingStarted({ ov, onCreateClass }: { ov: TeachingOverview; onCreateC
     {
       done: hasClass,
       title: "Sınıf oluştur",
-      body: "Bölüm ve dersi seç; sınıf adı kendiliğinden oluşur.",
+      body: "Bölümünü seç (ör. Bilgisayar Programcılığı) ve verdiğin dersleri ekle. Bir kez yapılır.",
       action: !hasClass && (
         <button className="btn btn-primary btn-sm" onClick={onCreateClass}>
           Sınıf oluştur
@@ -227,9 +275,9 @@ function GettingStarted({ ov, onCreateClass }: { ov: TeachingOverview; onCreateC
     {
       done: hasAssignment,
       title: "İlk ödevi ver",
-      body: "Ödev metnini yapıştır, AI kurallara ayırsın; teslim tarihini belirle.",
+      body: "Dersi seç, ödev metnini yapıştır; AI kurallara ayırsın, teslim tarihini belirle.",
       action: hasClass && !hasAssignment && firstClass && (
-        <Link className="btn btn-sm" to={`/sinif/${firstClass.id}`}>
+        <Link className="btn btn-sm" to={giveAssignmentUrl(firstClass.id)}>
           Ödev ver
         </Link>
       ),
@@ -327,59 +375,93 @@ function StatTile({
 }
 
 function ClassCard({ c, onAi }: { c: OverviewClass; onAi: () => void }) {
-  const shown = c.assignments.slice(0, 3);
+  // Önce açık ödevler (en yakın tarih), sonra bitenler
+  const sorted = [...c.assignments].sort((a, b) =>
+    a.open !== b.open ? (a.open ? -1 : 1) : a.open ? a.effective_deadline_at.localeCompare(b.effective_deadline_at) : 0
+  );
+  const shown = sorted.slice(0, 4);
+  const sub = [
+    c.department_name && c.department_name !== c.name ? c.department_name : null,
+    c.term,
+    `${c.student_count} öğrenci`,
+  ].filter(Boolean);
   return (
     <article className="card" style={{ padding: "18px 20px" }}>
       <div className="row between" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <Link to={`/sinif/${c.id}`} style={{ color: "inherit", minWidth: 0 }}>
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20 }}>{c.name}</div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
-            {[c.course_name, c.term, `${c.student_count} öğrenci`, `${c.assignment_count} ödev`]
-              .filter(Boolean)
-              .join(" · ")}
-          </div>
+          <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>{sub.join(" · ")}</div>
         </Link>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="ai-btn" title="AI sınıf özeti" onClick={onAi}>
-            <IconSparkle size={14} />
-            AI özeti
-          </button>
-          <Link className="btn btn-sm" to={`/sinif/${c.id}`}>
-            Aç
-          </Link>
-        </div>
+        <button className="ai-btn" title="AI sınıf özeti" onClick={onAi}>
+          <IconSparkle size={14} />
+          AI özeti
+        </button>
       </div>
+
+      <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+        {c.courses.length === 0 ? (
+          <span className="faint" style={{ fontSize: 12.5 }}>Henüz ders eklenmedi</span>
+        ) : (
+          c.courses.map((co) => (
+            <Link key={co.id} to={`/sinif/${c.id}?ders=${co.id}`} className="chip" style={{ color: "var(--muted)" }}>
+              {co.name}
+            </Link>
+          ))
+        )}
+      </div>
+
       {shown.length > 0 ? (
-        <div className="mini-grid" style={{ marginTop: 14 }}>
-          {shown.map((a) => {
-            const pct = a.enrolled ? Math.round((a.submitted / a.enrolled) * 100) : 0;
-            return (
-              <Link key={a.id} to={`/sinif/${c.id}?odev=${a.id}`} className="mini" style={{ color: "inherit" }}>
-                <div className="row between" style={{ fontSize: 13, gap: 6 }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</span>
-                  <span style={{ color: a.open ? "var(--gold)" : "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
-                    {a.open ? timeLeft(a.effective_deadline_at) : "Süre doldu"}
-                  </span>
+        <div style={{ marginTop: 12, borderTop: "1px solid var(--line)" }}>
+          {shown.map((a) => (
+            <Link
+              key={a.id}
+              to={`/sinif/${c.id}?odev=${a.id}`}
+              className="row between"
+              style={{ color: "inherit", padding: "10px 0", borderBottom: "1px solid var(--line)", gap: 10 }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {a.title}
                 </div>
-                <div className={"progress" + (pct >= 100 ? " done" : "")} style={{ margin: "9px 0 6px" }}>
-                  <span style={{ width: `${pct}%` }} />
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {[a.course_name, a.submission_kind === "document" ? "Rapor / belge" : null].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: a.open ? "var(--gold)" : "var(--muted)" }}>
+                  {a.open ? `${timeLeft(a.effective_deadline_at)} kaldı` : "Süre doldu"}
                 </div>
                 <div className="muted" style={{ fontSize: 12 }}>
                   {a.submitted}/{a.enrolled} teslim
-                  {a.needs_review > 0 ? ` · ${a.needs_review} notlanmadı` : a.submitted ? " · hepsi notlandı" : ""}
+                  {a.needs_review > 0 ? ` · ${a.needs_review} notlanmadı` : ""}
                 </div>
-              </Link>
-            );
-          })}
+              </div>
+            </Link>
+          ))}
+          {c.assignments.length > shown.length && (
+            <Link to={`/sinif/${c.id}`} className="muted" style={{ display: "block", fontSize: 12.5, paddingTop: 8 }}>
+              Tüm ödevler ({c.assignments.length})
+            </Link>
+          )}
         </div>
       ) : (
-        <p className="muted" style={{ fontSize: 13, margin: "12px 0 0" }}>Henüz ödev yok.</p>
+        <p className="muted" style={{ fontSize: 13, margin: "12px 0 0" }}>Bu sınıfa henüz ödev vermedin.</p>
       )}
+
+      <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+        <Link className="btn btn-primary btn-sm" to={giveAssignmentUrl(c.id)}>
+          <IconPlus size={14} />
+          Bu sınıfa ödev ver
+        </Link>
+        <Link className="btn btn-sm" to={`/sinif/${c.id}`}>
+          Sınıfa gir
+        </Link>
+      </div>
     </article>
   );
 }
 
-const NEW_COURSE = "__new__";
+const NEW_DEP = "__new_dep__";
 
 function CreateClassFlow({
   departments,
@@ -388,128 +470,209 @@ function CreateClassFlow({
 }: {
   departments: Department[];
   courses: Course[];
-  onDone: () => void;
+  onDone: (classId: string) => void;
 }) {
+  const [deps, setDeps] = useState<Department[]>(departments);
+  const [addingDep, setAddingDep] = useState(false);
+  const [newDep, setNewDep] = useState("");
   const [departmentId, setDepartmentId] = useState("");
-  const [courseId, setCourseId] = useState(""); // "" | courseId | NEW_COURSE
-  const [newCourseName, setNewCourseName] = useState("");
-  const [newCourseCode, setNewCourseCode] = useState("");
-  const [section, setSection] = useState("");
+  const [name, setName] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
   const [term, setTerm] = useState("");
+  const [picked, setPicked] = useState<string[]>([]); // var olan dersler
+  const [newCourses, setNewCourses] = useState<string[]>([]); // yeni ders adları
+  const [newCourse, setNewCourse] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Secili bolumun dersleri
-  const deptCourses = useMemo(
-    () => courses.filter((c) => c.department_id === departmentId),
-    [courses, departmentId]
-  );
+  const deptCourses = useMemo(() => courses.filter((c) => c.department_id === departmentId), [courses, departmentId]);
+  const deptName = deps.find((d) => d.id === departmentId)?.name ?? "";
 
-  const creatingNewCourse = courseId === NEW_COURSE;
-  const selectedCourseName = creatingNewCourse
-    ? newCourseName.trim()
-    : deptCourses.find((c) => c.id === courseId)?.name ?? "";
-  // Sinif adi OTOMATIK uretilir: ders adi (+ varsa sube). Ogretmen ad yazmaz.
-  const generatedName = selectedCourseName
-    ? section.trim()
-      ? `${selectedCourseName} - ${section.trim()} Şubesi`
-      : selectedCourseName
-    : "";
+  function chooseDepartment(id: string, list: Department[] = deps) {
+    if (id === NEW_DEP) {
+      setAddingDep(true);
+      return;
+    }
+    setDepartmentId(id);
+    setPicked([]);
+    // Sınıf adı varsayılan olarak bölüm adı (hoca "1. sınıf", "A şubesi" ekleyebilir)
+    if (!nameTouched) setName(list.find((d) => d.id === id)?.name ?? "");
+  }
+
+  async function createDepartment() {
+    if (!newDep.trim()) return;
+    setErr(null);
+    try {
+      const d = await api<Department>("/departments", { method: "POST", body: { name: newDep.trim() } });
+      const list = deps.some((x) => x.id === d.id) ? deps : [...deps, d].sort((a, b) => a.name.localeCompare(b.name, "tr"));
+      setDeps(list);
+      setAddingDep(false);
+      setNewDep("");
+      chooseDepartment(d.id, list);
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : "Bölüm eklenemedi.");
+    }
+  }
+
+  function addNewCourse() {
+    const n = newCourse.trim();
+    if (!n) return;
+    const existing = deptCourses.find((c) => c.name.toLocaleLowerCase("tr") === n.toLocaleLowerCase("tr"));
+    if (existing) setPicked((p) => (p.includes(existing.id) ? p : [...p, existing.id]));
+    else setNewCourses((l) => (l.includes(n) ? l : [...l, n]));
+    setNewCourse("");
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setBusy(true);
     try {
-      let finalCourseId = courseId;
-      if (courseId === NEW_COURSE) {
-        const created = await api<Course>("/courses", {
-          method: "POST",
-          body: { department_id: departmentId, name: newCourseName, code: newCourseCode || null },
-        });
-        finalCourseId = created.id;
-      }
-      await api("/classes", {
+      const created = await api<ClassOut>("/classes", {
         method: "POST",
-        body: { course_id: finalCourseId, name: generatedName, term: term || null },
+        body: { department_id: departmentId, name: name.trim(), term: term.trim() || null, course_ids: picked },
       });
-      onDone();
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Oluşturulamadı.");
+      for (const n of newCourses) {
+        await api(`/classes/${created.id}/courses`, { method: "POST", body: { name: n } });
+      }
+      onDone(created.id);
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : "Oluşturulamadı.");
     } finally {
       setBusy(false);
     }
   }
 
-  const canSubmit = departmentId && (creatingNewCourse ? newCourseName.trim() : courseId);
+  const courseCount = picked.length + newCourses.length;
 
   return (
     <form onSubmit={submit}>
       <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        Bölüm ve ders seç; sınıf adı otomatik oluşur. Tek grubun varsa şubeyi boş bırak.
+        Sınıf bir kez oluşturulur; öğrencileri bir kez eklersin. Verdiğin dersleri şimdi ya da sonra ekleyebilirsin,
+        ödevi verirken dersi seçersin.
       </p>
       <div className="field">
         <label>Bölüm</label>
-        <select
-          value={departmentId}
-          onChange={(e) => {
-            setDepartmentId(e.target.value);
-            setCourseId("");
-          }}
-          required
-        >
-          <option value="">Seç…</option>
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
+        {!addingDep ? (
+          <select value={departmentId} onChange={(e) => chooseDepartment(e.target.value)} required>
+            <option value="">Seç…</option>
+            {deps.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+            <option value={NEW_DEP}>+ Listede yok, bölüm ekle…</option>
+          </select>
+        ) : (
+          <div className="row" style={{ gap: 6 }}>
+            <input
+              autoFocus
+              value={newDep}
+              onChange={(e) => setNewDep(e.target.value)}
+              placeholder="Bölüm adı (ör. Elektrik)"
+              aria-label="Yeni bölüm adı"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  createDepartment();
+                }
+              }}
+            />
+            <button type="button" className="btn btn-primary btn-sm" onClick={createDepartment} disabled={!newDep.trim()}>
+              Ekle
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAddingDep(false)}>
+              Vazgeç
+            </button>
+          </div>
+        )}
       </div>
       <div className="field">
-        <label>Ders</label>
-        <select value={courseId} onChange={(e) => setCourseId(e.target.value)} disabled={!departmentId} required>
-          <option value="">{departmentId ? "Seç…" : "Önce bölüm seç"}</option>
-          {deptCourses.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-              {c.code ? ` (${c.code})` : ""}
-            </option>
-          ))}
-          {departmentId && <option value={NEW_COURSE}>+ Yeni ders oluştur…</option>}
-        </select>
+        <label>Sınıf adı</label>
+        <input
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            setNameTouched(true);
+          }}
+          placeholder="Bilgisayar Programcılığı 1. sınıf"
+          required
+        />
+        <p className="faint" style={{ fontSize: 12, margin: "6px 0 0" }}>
+          Aynı bölümde birden çok grubun varsa ayırt edici ekle (ör. "1. sınıf", "A şubesi").
+        </p>
       </div>
-      {creatingNewCourse && (
-        <div className="panel" style={{ padding: 12, marginBottom: 16 }}>
-          <div className="field" style={{ marginBottom: 10 }}>
-            <label>Yeni ders adı</label>
-            <input value={newCourseName} onChange={(e) => setNewCourseName(e.target.value)} placeholder="Web Programlama II" required />
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Ders kodu (opsiyonel)</label>
-            <input value={newCourseCode} onChange={(e) => setNewCourseCode(e.target.value)} placeholder="WEB202" />
+      <div className="field">
+        <label>Dönem (opsiyonel)</label>
+        <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="2025-Güz" />
+      </div>
+
+      {departmentId && (
+        <div className="field">
+          <label>Bu sınıfta verdiğin dersler (opsiyonel)</label>
+          {deptCourses.length > 0 && (
+            <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {deptCourses.map((co) => {
+                const on = picked.includes(co.id);
+                return (
+                  <button
+                    type="button"
+                    key={co.id}
+                    className={"chip chip-btn" + (on ? " on" : "")}
+                    aria-pressed={on}
+                    onClick={() => setPicked((p) => (on ? p.filter((x) => x !== co.id) : [...p, co.id]))}
+                  >
+                    {on && <IconCheck size={12} />}
+                    {co.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {newCourses.length > 0 && (
+            <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {newCourses.map((n) => (
+                <span key={n} className="chip chip-btn on">
+                  {n}
+                  <button type="button" className="chip-x" aria-label={`${n} dersini kaldır`} onClick={() => setNewCourses((l) => l.filter((x) => x !== n))}>
+                    <IconX size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="row" style={{ gap: 6 }}>
+            <input
+              value={newCourse}
+              onChange={(e) => setNewCourse(e.target.value)}
+              placeholder={deptCourses.length ? "Listede yoksa ders adını yaz" : "Ders adı (ör. Mesleki Çözümleme I)"}
+              aria-label="Yeni ders adı"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addNewCourse();
+                }
+              }}
+            />
+            <button type="button" className="btn btn-sm" onClick={addNewCourse} disabled={!newCourse.trim()}>
+              Ekle
+            </button>
           </div>
         </div>
       )}
-      <div className="row" style={{ gap: 12, alignItems: "flex-start" }}>
-        <div className="field" style={{ flex: 1 }}>
-          <label>Şube / grup (opsiyonel)</label>
-          <input value={section} onChange={(e) => setSection(e.target.value)} placeholder="ör: A" />
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label>Dönem (opsiyonel)</label>
-          <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="2025-Güz" />
-        </div>
-      </div>
-      {generatedName && (
+
+      {departmentId && name.trim() && (
         <div className="panel" style={{ padding: "10px 12px", marginBottom: 16, fontSize: 13 }}>
           <span className="muted">Oluşacak sınıf: </span>
-          <b>{generatedName}</b>
-          {term.trim() ? <span className="muted"> · {term.trim()}</span> : null}
+          <b>{name.trim()}</b>
+          <span className="muted">
+            {name.trim() !== deptName ? ` · ${deptName}` : ""}
+            {term.trim() ? ` · ${term.trim()}` : ""} · {courseCount ? `${courseCount} ders` : "ders sonra eklenecek"}
+          </span>
         </div>
       )}
       {err && <p className="error">{err}</p>}
-      <button className="btn btn-primary" disabled={busy || !canSubmit} style={{ width: "100%" }}>
+      <button className="btn btn-primary" disabled={busy || !departmentId || !name.trim()} style={{ width: "100%" }}>
         {busy ? "Oluşturuluyor…" : "Sınıf oluştur"}
       </button>
     </form>

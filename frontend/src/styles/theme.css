@@ -994,3 +994,36 @@ a.stat:hover {
     display: none;
   }
 }
+
+/* Tıklanabilir ders çipleri (sınıf sayfası) */
+.chip-btn {
+  cursor: pointer;
+  background: transparent;
+  font-size: 12.5px;
+  padding: 4px 11px;
+}
+.chip-btn.on {
+  color: var(--gold);
+  border-color: var(--gold-dim);
+  background: var(--gold-bg);
+}
+.chip-hit,
+.chip-x {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.chip-x {
+  margin-left: 4px;
+  padding: 2px;
+  border-radius: 99px;
+  color: var(--faint);
+}
+.chip-x:hover {
+  color: var(--danger);
+}

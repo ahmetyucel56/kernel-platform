@@ -108,6 +108,11 @@ function AcademicianCard({ a }: { a: Assignment }) {
   return (
     <Pressable onPress={() => router.push({ pathname: "/assignment/[id]", params: { id: a.id } })}>
       <Card>
+        {a.course_name ? (
+          <View style={{ flexDirection: "row", marginBottom: 6 }}>
+            <Tag text={a.course_name} color={colors.gold} />
+          </View>
+        ) : null}
         <View style={{ flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap" }}>
           <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "700", flex: 1 }}>{a.title}</Text>
           <Tag text={past ? "Süre doldu" : "Açık"} color={past ? colors.muted : colors.gold} />
@@ -165,6 +170,11 @@ function AssignmentCard({ a }: { a: Assignment }) {
 
   return (
     <Card>
+      {a.course_name ? (
+        <View style={{ flexDirection: "row", marginBottom: 6 }}>
+          <Tag text={a.course_name} color={colors.gold} />
+        </View>
+      ) : null}
       <View style={{ flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap" }}>
         <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "700", flex: 1 }}>{a.title}</Text>
         <Tag text={past ? "Süre doldu" : "Açık"} color={past ? colors.muted : colors.gold} />

@@ -7,6 +7,7 @@ import { colors, fonts, radius } from "../../src/theme";
 import { PrecheckSettings } from "../../src/PrecheckSettings";
 import { DateTimeField } from "../../src/DateTimeField";
 import { StudentVisibility, SubmissionKindPicker, type SubmissionKind, type Visibility } from "../../src/StudentVisibility";
+import { CoursePicker } from "../../src/CoursePicker";
 
 const PRESETS = [
   { days: 7, label: "1 hafta" },
@@ -23,11 +24,12 @@ function daysFromNow(days: number): Date {
 
 export default function NewAssignment() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ classId?: string }>();
+  const params = useLocalSearchParams<{ classId?: string; courseId?: string }>();
 
   const [classes, setClasses] = useState<ClassOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [classId, setClassId] = useState<string>("");
+  const [courseId, setCourseId] = useState<string>("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [reqText, setReqText] = useState("");
@@ -71,8 +73,17 @@ export default function NewAssignment() {
           ? params.classId
           : list[0]?.id ?? "";
         setClassId(initial);
+        const cls = list.find((c) => c.id === initial);
+        const courses = cls?.courses ?? [];
+        setCourseId(
+          params.courseId && courses.some((c) => c.id === params.courseId)
+            ? params.courseId
+            : courses.length === 1
+              ? courses[0].id
+              : ""
+        );
       })
-      .catch(() => setErr("Dersler yüklenemedi."))
+      .catch(() => setErr("Sınıflar yüklenemedi."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -80,11 +91,16 @@ export default function NewAssignment() {
     () => classes.find((c) => c.id === classId)?.name ?? "",
     [classes, classId]
   );
+  const classCourses = classes.find((c) => c.id === classId)?.courses ?? [];
 
   async function save() {
     setErr(null);
     if (!classId) {
-      setErr("Önce bir ders seç.");
+      setErr("Önce bir sınıf seç.");
+      return;
+    }
+    if (!courseId) {
+      setErr("Ödevin hangi derse ait olduğunu seç.");
       return;
     }
     if (!title.trim()) {
@@ -114,6 +130,7 @@ export default function NewAssignment() {
           show_requirement_to_student: vis.requirement,
           show_clean_code_to_student: vis.cleanCode,
           submission_kind: kind,
+          course_id: courseId,
         },
       });
       router.back();
@@ -131,7 +148,7 @@ export default function NewAssignment() {
       <BackHeader />
 
       <Text style={{ color: colors.ink, fontSize: 26, fontFamily: fonts.display, marginBottom: 16 }}>
-        Yeni ödev
+        Ödev ver
       </Text>
 
       {classes.length === 0 ? (
@@ -143,13 +160,23 @@ export default function NewAssignment() {
       ) : (
         <Card>
           <Select
-            label="Ders"
+            label="Sınıf"
             value={classLabel}
             options={classes.map((c) => c.name)}
             onChange={(name) => {
               const c = classes.find((x) => x.name === name);
-              if (c) setClassId(c.id);
+              if (c) {
+                setClassId(c.id);
+                setCourseId(c.courses.length === 1 ? c.courses[0].id : "");
+              }
             }}
+          />
+          <CoursePicker
+            classId={classId}
+            courses={classCourses}
+            value={courseId}
+            onChange={setCourseId}
+            onClassChanged={(c) => setClasses((list) => list.map((x) => (x.id === c.id ? c : x)))}
           />
 
           <Text style={s.label}>Başlık</Text>
@@ -237,7 +264,7 @@ export default function NewAssignment() {
 
           <View style={{ marginTop: 16 }}>
             <Btn
-              title={saving ? "Oluşturuluyor…" : "Ödevi oluştur"}
+              title={saving ? "Veriliyor…" : "Ödevi ver"}
               variant="gold"
               onPress={save}
               disabled={saving}

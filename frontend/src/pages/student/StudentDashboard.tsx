@@ -82,7 +82,7 @@ export function StudentDashboard() {
                       <div style={{ fontWeight: 600, fontSize: 14.5 }}>{a.title}</div>
                       <div className="muted" style={{ fontSize: 12.5 }}>
                         {a.latest ? `v${a.latest.version_number}` : "Teslim yok"} ·{" "}
-                        {a.open ? `${timeLeft(a.effective_deadline_at)} kaldı` : "süre doldu"} · {a.class_name}
+                        {a.open ? `${timeLeft(a.effective_deadline_at)} kaldı` : "süre doldu"} · {a.course_name ?? a.class_name}
                       </div>
                     </div>
                     <StatusChip a={a} />
@@ -145,7 +145,7 @@ function NextCard({ a }: { a: MyAssignment }) {
         <StatusChip a={a} />
       </div>
       <h2 style={{ fontSize: 24, margin: "10px 0 2px" }}>{a.title}</h2>
-      <div className="muted" style={{ fontSize: 13 }}>{a.class_name}</div>
+      <div className="muted" style={{ fontSize: 13 }}>{[a.course_name, a.class_name].filter(Boolean).join(" · ")}</div>
       <div className="row" style={{ gap: 28, margin: "16px 0 18px", flexWrap: "wrap" }}>
         <div>
           <div className="big-num">{left}</div>

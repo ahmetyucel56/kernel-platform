@@ -91,6 +91,7 @@ function UploadCard({ a }: { a: Assignment }) {
 
   return (
     <div className="card" id={`odev-${a.id}`} ref={cardRef} style={{ scrollMarginTop: 80 }}>
+      {a.course_name && <span className="chip chip-gold" style={{ marginBottom: 6 }}>{a.course_name}</span>}
       <div className="row between" style={{ flexWrap: "wrap", gap: 6 }}>
         <div style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>{a.title}</div>
         <span className={past ? "tag" : "tag tag-gold"}>{past ? "Süre doldu" : "Açık"}</span>

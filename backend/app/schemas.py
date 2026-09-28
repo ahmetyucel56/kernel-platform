@@ -232,18 +232,37 @@ class CourseOut(BaseModel):
 
 
 class ClassIn(BaseModel):
-    course_id: uuid.UUID
+    """Sınıf = bölüm grubu. Dersler sonradan da eklenebilir (course_ids boş olabilir).
+    course_id: eski istemciler için (sınıf = tek ders); bölüm o dersten alınır."""
+    department_id: Optional[uuid.UUID] = None
+    course_ids: list[uuid.UUID] = Field(default_factory=list)
+    course_id: Optional[uuid.UUID] = None
     name: str = Field(min_length=1, max_length=200)
     term: Optional[str] = None
+
+
+class ClassUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    term: Optional[str] = None
+
+
+class ClassCourseIn(BaseModel):
+    """Sınıfa ders ekle: var olan ders (course_id) ya da yeni ders (name, code)."""
+    course_id: Optional[uuid.UUID] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    code: Optional[str] = Field(default=None, max_length=50)
 
 
 class ClassOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
-    course_id: uuid.UUID
+    department_id: Optional[uuid.UUID] = None
+    department_name: Optional[str] = None
+    course_id: Optional[uuid.UUID] = None
     academician_id: uuid.UUID
     name: str
     term: Optional[str] = None
+    courses: list[CourseOut] = Field(default_factory=list)
 
 
 class EnrollIn(BaseModel):
@@ -270,6 +289,8 @@ class AssignmentIn(BaseModel):
     show_requirement_to_student: bool = True
     show_clean_code_to_student: bool = True
     submission_kind: Literal["code", "document"] = "code"
+    # Sınıfın derslerinden biri. Sınıfın tek dersi varsa boş bırakılabilir.
+    course_id: Optional[uuid.UUID] = None
 
 
 class AssignmentOut(BaseModel):
@@ -287,6 +308,8 @@ class AssignmentOut(BaseModel):
     show_requirement_to_student: bool = True
     show_clean_code_to_student: bool = True
     submission_kind: str = "code"
+    course_id: Optional[uuid.UUID] = None
+    course_name: Optional[str] = None
     # Uzatmalar dahil gecerli son tarih (ogrenci: kendine ozel + tum sinif;
     # hoca: tum sinif). "Acik mi?" karari buna gore verilir.
     effective_deadline_at: Optional[datetime] = None
@@ -302,6 +325,7 @@ class AssignmentUpdate(BaseModel):
     show_requirement_to_student: Optional[bool] = None
     show_clean_code_to_student: Optional[bool] = None
     submission_kind: Optional[Literal["code", "document"]] = None
+    course_id: Optional[uuid.UUID] = None
 
 
 class ReopenIn(BaseModel):

@@ -127,6 +127,11 @@ function AcademicianBody({ ov }: { ov: TeachingOverview | null }) {
   if (!ov) return <Muted style={{ marginTop: 20 }}>Özet yüklenemedi.</Muted>;
   const att = ov.attention;
   const openAssignment = (id: string) => router.push({ pathname: "/assignment/[id]", params: { id } });
+  // "Ödev ver": sınıf seçimi ödev formunda (tek sınıf varsa o seçili gelir)
+  const giveAssignment = (classId?: string) =>
+    ov.classes.length === 0
+      ? router.push("/class/new")
+      : router.push({ pathname: "/assignment/new", params: classId ? { classId } : {} });
   const first = <T,>(items: T[]) => (items.length ? items[0] : null);
 
   const nr = first(att.needs_review.items);
@@ -169,20 +174,30 @@ function AcademicianBody({ ov }: { ov: TeachingOverview | null }) {
         </View>
       </View>
 
-      <SectionLabel
-        right={<Btn title="Sınıf" icon="plus" variant="ghost" small onPress={() => router.push("/class/new")} />}
-      >
-        Sınıflarım
-      </SectionLabel>
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 18 }}>
+        <View style={{ flex: 1 }}>
+          <Btn title="Ödev ver" icon="plus" variant="primary" onPress={() => giveAssignment()} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Btn title="Yeni sınıf" icon="plus" variant="ghost" onPress={() => router.push("/class/new")} />
+        </View>
+      </View>
+
+      <SectionLabel>Sınıflarım</SectionLabel>
       {ov.classes.length === 0 ? (
         <Card>
-          <Muted>Henüz sınıfın yok. "Sınıf" ile ilk sınıfını oluştur.</Muted>
+          <Muted>
+            Henüz sınıfın yok. Bölümün için bir kez sınıf oluştur (ör. Bilgisayar Programcılığı); sonra derslerini
+            ekleyip ödevleri o sınıfa verirsin.
+          </Muted>
         </Card>
       ) : (
         ov.classes.map((c) => {
-          const next = c.assignments.filter((a) => a.open).sort((a, b) => a.effective_deadline_at.localeCompare(b.effective_deadline_at))[0]
-            ?? c.assignments[0];
-          const pct = next && next.enrolled ? (next.submitted / next.enrolled) * 100 : 0;
+          const shownA = [...c.assignments]
+            .sort((a, b) =>
+              a.open !== b.open ? (a.open ? -1 : 1) : a.open ? a.effective_deadline_at.localeCompare(b.effective_deadline_at) : 0
+            )
+            .slice(0, 3);
           return (
             <Pressable key={c.id} onPress={() => router.push({ pathname: "/class/[id]", params: { id: c.id } })}>
               <Card>
@@ -190,32 +205,58 @@ function AcademicianBody({ ov }: { ov: TeachingOverview | null }) {
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.ink, fontSize: 17.5, fontFamily: fonts.displayBold }}>{c.name}</Text>
                     <Muted style={{ fontSize: 12.5, marginTop: 2 }}>
-                      {[`${c.student_count} öğrenci`, `${c.assignment_count} ödev`, c.term].filter(Boolean).join(" · ")}
+                      {[
+                        c.department_name && c.department_name !== c.name ? c.department_name : null,
+                        c.term,
+                        `${c.student_count} öğrenci`,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </Muted>
                   </View>
                   <AiChip onPress={() => setAiClass(c)} />
                 </View>
-                {next ? (
-                  <View style={{ backgroundColor: colors.bg3, borderRadius: 12, padding: 11, marginTop: 12 }}>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
-                      <Text style={{ color: colors.ink, fontSize: 13, flex: 1 }} numberOfLines={1}>
-                        {next.title}
-                      </Text>
-                      <Text style={{ color: next.open ? colors.gold : colors.muted, fontSize: 12.5, fontWeight: "700" }}>
-                        {next.open ? timeLeft(next.effective_deadline_at) : "Süre doldu"}
-                      </Text>
-                    </View>
-                    <View style={{ marginVertical: 7 }}>
-                      <ProgressBar pct={pct} done={pct >= 100} />
-                    </View>
-                    <Muted style={{ fontSize: 11.5 }}>
-                      {next.submitted}/{next.enrolled} teslim
-                      {next.needs_review ? ` · ${next.needs_review} notlanmadı` : ""}
-                    </Muted>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                  {c.courses.length === 0 ? (
+                    <Muted style={{ fontSize: 12.5 }}>Henüz ders eklenmedi</Muted>
+                  ) : (
+                    c.courses.map((co) => <Chip key={co.id} text={co.name} />)
+                  )}
+                </View>
+                {shownA.length > 0 ? (
+                  <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: colors.line }}>
+                    {shownA.map((a) => (
+                      <Pressable
+                        key={a.id}
+                        onPress={() => openAssignment(a.id)}
+                        style={{ flexDirection: "row", gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.line }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.ink, fontSize: 13.5, fontWeight: "600" }} numberOfLines={1}>
+                            {a.title}
+                          </Text>
+                          {a.course_name ? <Muted style={{ fontSize: 11.5 }}>{a.course_name}</Muted> : null}
+                        </View>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text style={{ color: a.open ? colors.gold : colors.muted, fontSize: 12, fontWeight: "700" }}>
+                            {a.open ? `${timeLeft(a.effective_deadline_at)} kaldı` : "Süre doldu"}
+                          </Text>
+                          <Muted style={{ fontSize: 11.5 }}>
+                            {a.submitted}/{a.enrolled} teslim
+                          </Muted>
+                        </View>
+                      </Pressable>
+                    ))}
                   </View>
                 ) : (
-                  <Muted style={{ fontSize: 12.5, marginTop: 10 }}>Henüz ödev yok.</Muted>
+                  <Muted style={{ fontSize: 12.5, marginTop: 10 }}>Bu sınıfa henüz ödev vermedin.</Muted>
                 )}
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Btn small title="Bu sınıfa ödev ver" icon="plus" variant="primary" onPress={() => giveAssignment(c.id)} />
+                  </View>
+                  <Btn small title="Sınıfa gir" variant="ghost" onPress={() => router.push({ pathname: "/class/[id]", params: { id: c.id } })} />
+                </View>
               </Card>
             </Pressable>
           );
@@ -261,7 +302,7 @@ function AcademicianBody({ ov }: { ov: TeachingOverview | null }) {
                     {u.title}
                   </Text>
                   <Muted style={{ fontSize: 12 }}>
-                    {u.class_name} · {u.submitted}/{u.enrolled} teslim
+                    {[u.class_name, u.course_name].filter(Boolean).join(" · ")} · {u.submitted}/{u.enrolled} teslim
                   </Muted>
                 </View>
                 <Icon name="chevron-right" size={16} color={colors.muted} />
@@ -399,7 +440,7 @@ function StudentBody({
             {statusChip(next)}
           </View>
           <Text style={{ color: colors.ink, fontSize: 21, fontFamily: fonts.displayBold, marginTop: 10 }}>{next.title}</Text>
-          <Muted style={{ fontSize: 12.5 }}>{next.class_name}</Muted>
+          <Muted style={{ fontSize: 12.5 }}>{[next.course_name, next.class_name].filter(Boolean).join(" · ")}</Muted>
           <View style={{ flexDirection: "row", gap: 22, marginVertical: 14 }}>
             <View>
               <Text style={{ color: colors.ink, fontSize: 24, fontFamily: fonts.display }}>{timeLeft(next.effective_deadline_at)}</Text>
@@ -468,6 +509,7 @@ function StudentBody({
                   {a.title}
                 </Text>
                 <Muted style={{ fontSize: 12 }}>
+                  {a.course_name ? `${a.course_name} · ` : ""}
                   {a.latest ? `v${a.latest.version_number}` : "Teslim yok"} ·{" "}
                   {a.open ? `${timeLeft(a.effective_deadline_at)} kaldı` : "süre doldu"}
                 </Muted>

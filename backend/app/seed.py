@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.db import SessionLocal, init_db
+from app.lib.classinfo import attach_course
 from app.models import (
     Assignment,
     Class,
@@ -63,9 +64,12 @@ def run() -> None:
             # Kurucu demoyu kapatti / demo verisini sildi: yeniden olusturma.
             print("Seed atlandi: demo kurucu panelinden kapatilmis.")
             return
-        dep = db.scalar(select(Department).where(Department.name == "Bilgisayar Programciligi"))
+        dep = db.scalar(select(Department).where(
+            Department.name.in_(["Bilgisayar Programcılığı", "Bilgisayar Programciligi"])))
+        if dep and dep.name != "Bilgisayar Programcılığı":
+            dep.name = "Bilgisayar Programcılığı"  # eski kayıt Türkçe karaktersizdi
         if not dep:
-            dep = Department(name="Bilgisayar Programciligi")
+            dep = Department(name="Bilgisayar Programcılığı")
             db.add(dep)
             db.flush()
 
@@ -84,13 +88,15 @@ def run() -> None:
         cls = db.scalar(select(Class).where(Class.name == "WEB202 - 2025 Güz"))
         if not cls:
             cls = Class(
-                course_id=course.id,
+                department_id=dep.id,
                 academician_id=hoca.id,
                 name="WEB202 - 2025 Güz",
                 term="2025-Güz",
             )
             db.add(cls)
             db.flush()
+
+        attach_course(db, cls, course.id)
 
         for student in (o1, o2):
             exists = db.scalar(
@@ -106,6 +112,7 @@ def run() -> None:
             db.add(
                 Assignment(
                     class_id=cls.id,
+                    course_id=course.id,
                     title="Ödev 1: REST API tasarımı",
                     description="Basit bir TODO REST API'si yazın.",
                     requirements_json=[

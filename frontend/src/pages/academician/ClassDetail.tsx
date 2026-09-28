@@ -15,7 +15,8 @@ import type {
 } from "../../api/types";
 import { dueLabel, dueOf, formatDate, isPast, isoToLocalInput, localInputToISO, timeLeft } from "../../lib/format";
 import { ClassAiModal } from "../../components/review/ClassAiModal";
-import { IconDownload, IconMore, IconPlus, IconSparkle } from "../../components/icons";
+import { IconDownload, IconMore, IconPlus, IconSparkle, IconX } from "../../components/icons";
+import { CoursePicker } from "../../components/academician/CoursePicker";
 
 type Tab = "odevler" | "ogrenciler" | "notlar";
 
@@ -31,7 +32,16 @@ export function ClassDetail() {
   const [loading, setLoading] = useState(true);
   const [ai, setAi] = useState<{ open: boolean; studentId?: string }>({ open: false });
   const [menu, setMenu] = useState(false);
-  const [creating, setCreating] = useState(false);
+  // Panodaki "Ödev ver" buraya ?yeni=1 ile gelir: form açık başlar
+  const [creating, setCreating] = useState(() => params.get("yeni") === "1");
+  const courseFilter = params.get("ders") ?? "";
+  const setCourseFilter = (id: string) => {
+    const p = new URLSearchParams(params);
+    if (id) p.set("ders", id);
+    else p.delete("ders");
+    setParams(p, { replace: true });
+  };
+  const courses = cls?.courses ?? [];
 
   const tab = (params.get("sekme") as Tab) || "odevler";
   const selectedId = params.get("odev");
@@ -45,6 +55,7 @@ export function ClassDetail() {
     const p = new URLSearchParams(params);
     p.set("odev", id);
     p.delete("sekme");
+    p.delete("yeni");
     setParams(p, { replace: true });
   };
 
@@ -74,14 +85,30 @@ export function ClassDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId]);
 
+  const shownAssignments = useMemo(
+    () => (courseFilter ? assignments.filter((a) => a.course_id === courseFilter) : assignments),
+    [assignments, courseFilter]
+  );
+
   // Varsayılan seçim: açık olanların en yakını, yoksa en yenisi
   const selected = useMemo(() => {
-    if (!assignments.length) return null;
-    const byId = assignments.find((a) => a.id === selectedId);
+    if (!shownAssignments.length) return null;
+    const byId = shownAssignments.find((a) => a.id === selectedId);
     if (byId) return byId;
-    const open = assignments.filter((a) => !isPast(dueOf(a))).sort((a, b) => dueOf(a).localeCompare(dueOf(b)));
-    return open[0] ?? assignments[0];
-  }, [assignments, selectedId]);
+    const open = shownAssignments.filter((a) => !isPast(dueOf(a))).sort((a, b) => dueOf(a).localeCompare(dueOf(b)));
+    return open[0] ?? shownAssignments[0];
+  }, [shownAssignments, selectedId]);
+
+  async function renameClass() {
+    setMenu(false);
+    const name = window.prompt("Sınıfın yeni adı (ör. Bilgisayar Programcılığı 1. sınıf)", cls?.name ?? "");
+    if (!name || !name.trim() || name.trim() === cls?.name) return;
+    try {
+      setCls(await api<ClassOut>(`/classes/${classId}`, { method: "PATCH", body: { name: name.trim() } }));
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : "Ad değiştirilemedi.");
+    }
+  }
 
   // Not dosyasi: kisa omurlu imzali link alinir, tarayici indirir.
   const [exporting, setExporting] = useState(false);
@@ -123,6 +150,9 @@ export function ClassDetail() {
         <div className="row" style={{ gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
           <h1 className="h-page" style={{ margin: 0 }}>{cls?.name ?? "Sınıf"}</h1>
           {cls?.term && <span className="tag">{cls.term}</span>}
+          {cls?.department_name && cls.department_name !== cls.name && (
+            <span className="muted" style={{ fontSize: 13 }}>{cls.department_name}</span>
+          )}
         </div>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           <button className="btn btn-gold" onClick={() => setAi({ open: true })}>
@@ -144,6 +174,9 @@ export function ClassDetail() {
             </button>
             {menu && (
               <div className="menu" role="menu">
+                <button role="menuitem" onClick={renameClass}>
+                  Sınıfın adını değiştir
+                </button>
                 <button role="menuitem" style={{ color: "var(--danger)" }} onClick={deleteClass}>
                   Sınıfı sil
                 </button>
@@ -162,7 +195,17 @@ export function ClassDetail() {
       )}
       {err && <p className="error">{err}</p>}
 
-      <div className="tabs" role="tablist" style={{ margin: "18px 0 18px" }}>
+      {cls && (
+        <CourseBar
+          cls={cls}
+          assignments={assignments}
+          value={courseFilter}
+          onChange={setCourseFilter}
+          onClassChanged={setCls}
+        />
+      )}
+
+      <div className="tabs" role="tablist" style={{ margin: "14px 0 18px" }}>
         <button role="tab" aria-selected={tab === "odevler"} className={"tab" + (tab === "odevler" ? " on" : "")} onClick={() => setTab("odevler")}>
           Ödevler<span className="n">{assignments.length}</span>
         </button>
@@ -183,10 +226,14 @@ export function ClassDetail() {
               onClick={() => setCreating(true)}
             >
               <IconPlus />
-              Yeni ödev
+              Ödev ver
             </button>
-            {assignments.length === 0 && <p className="muted" style={{ fontSize: 13.5 }}>Henüz ödev yok.</p>}
-            {assignments.map((a) => {
+            {shownAssignments.length === 0 && (
+              <p className="muted" style={{ fontSize: 13.5 }}>
+                {courseFilter ? "Bu derste henüz ödev yok." : "Henüz ödev yok."}
+              </p>
+            )}
+            {shownAssignments.map((a) => {
               const st = stats[a.id];
               const past = isPast(dueOf(a));
               const pct = st && st.enrolled ? Math.round((st.submitted / st.enrolled) * 100) : 0;
@@ -197,6 +244,9 @@ export function ClassDetail() {
                   onClick={() => select(a.id)}
                 >
                   <div style={{ fontWeight: 600, fontSize: 14.5 }}>{a.title}</div>
+                  {courses.length > 1 && !courseFilter && a.course_name && (
+                    <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{a.course_name}</div>
+                  )}
                   <div className="row" style={{ gap: 6, marginTop: 7, flexWrap: "wrap" }}>
                     <span className={past ? "chip" : "chip chip-gold"}>{past ? "Süre doldu" : `Açık · ${timeLeft(dueOf(a))}`}</span>
                     {st && (
@@ -219,6 +269,9 @@ export function ClassDetail() {
             {creating ? (
               <CreateAssignment
                 classId={classId}
+                courses={courses}
+                defaultCourseId={courseFilter}
+                onClassChanged={setCls}
                 onCancel={() => setCreating(false)}
                 onDone={(id) => {
                   setCreating(false);
@@ -226,10 +279,10 @@ export function ClassDetail() {
                 }}
               />
             ) : selected ? (
-              <AssignmentPanel key={selected.id} a={selected} onChanged={refresh} />
+              <AssignmentPanel key={selected.id} a={selected} cls={cls} onClassChanged={setCls} onChanged={refresh} />
             ) : (
               <div className="card">
-                <p className="muted" style={{ margin: 0 }}>Sol taraftaki "Yeni ödev" ile ilk ödevi oluştur.</p>
+                <p className="muted" style={{ margin: 0 }}>Sol taraftaki "Ödev ver" ile ilk ödevi oluştur.</p>
               </div>
             )}
           </div>
@@ -245,13 +298,25 @@ export function ClassDetail() {
         />
       )}
 
-      {tab === "notlar" && <GradesTab classId={classId} onExport={exportGrades} exporting={exporting} />}
+      {tab === "notlar" && (
+        <GradesTab classId={classId} courseId={courseFilter} onExport={exportGrades} exporting={exporting} />
+      )}
     </div>
   );
 }
 
 /* ---------------- Seçili ödev ---------------- */
-function AssignmentPanel({ a, onChanged }: { a: Assignment; onChanged: () => void }) {
+function AssignmentPanel({
+  a,
+  cls,
+  onClassChanged,
+  onChanged,
+}: {
+  a: Assignment;
+  cls: ClassOut | null;
+  onClassChanged: (c: ClassOut) => void;
+  onChanged: () => void;
+}) {
   const [panel, setPanel] = useState<"none" | "reopen" | "edit">("none");
   const [deleting, setDeleting] = useState(false);
   const [tick, setTick] = useState(0); // uzatma degisince teslim tablosu tazelenir
@@ -279,6 +344,7 @@ function AssignmentPanel({ a, onChanged }: { a: Assignment; onChanged: () => voi
     <section className="card" style={{ padding: "20px 22px" }}>
       <div className="row between" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
+          {a.course_name && <span className="chip chip-gold" style={{ marginBottom: 6 }}>{a.course_name}</span>}
           <h2 style={{ margin: 0, fontSize: 22 }}>{a.title}</h2>
           <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
             {a.submission_kind === "document" ? "Rapor / belge · " : ""}Son teslim {dueLabel(a)} · {reqs.length} kural
@@ -320,6 +386,9 @@ function AssignmentPanel({ a, onChanged }: { a: Assignment; onChanged: () => voi
       {panel === "edit" && (
         <EditAssignment
           a={a}
+          classId={a.class_id}
+          courses={cls?.courses ?? []}
+          onClassChanged={onClassChanged}
           onDone={() => {
             setPanel("none");
             onChanged();
@@ -614,8 +683,36 @@ function StudentsTab({
 }
 
 /* ---------------- Not çizelgesi ---------------- */
-function GradesTab({ classId, onExport, exporting }: { classId: string; onExport: () => void; exporting: boolean }) {
-  const [g, setG] = useState<ClassGrades | null>(null);
+function GradesTab({
+  classId,
+  courseId,
+  onExport,
+  exporting,
+}: {
+  classId: string;
+  courseId: string;
+  onExport: () => void;
+  exporting: boolean;
+}) {
+  const [all, setG] = useState<ClassGrades | null>(null);
+  // Seçili dersin ödevleri; ortalama da yalnızca o dersten hesaplanır
+  const g = useMemo(() => {
+    if (!all || !courseId) return all;
+    const keep = all.assignments.map((a, i) => (a.course_id === courseId ? i : -1)).filter((i) => i >= 0);
+    return {
+      assignments: keep.map((i) => all.assignments[i]),
+      rows: all.rows.map((r) => {
+        const scores = keep.map((i) => r.scores[i]);
+        const given = scores.filter((s): s is number => s != null);
+        return {
+          ...r,
+          scores,
+          statuses: keep.map((i) => r.statuses[i]),
+          average: given.length ? Math.round((given.reduce((x, y) => x + y, 0) / given.length) * 10) / 10 : null,
+        };
+      }),
+    };
+  }, [all, courseId]);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -632,6 +729,7 @@ function GradesTab({ classId, onExport, exporting }: { classId: string; onExport
       <div className="row between" style={{ flexWrap: "wrap", gap: 8 }}>
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>
           Her ödev için verdiğin en son not. Boş hücre: not verilmemiş (0 sayılmaz).
+          {courseId ? " Yalnızca seçili dersin ödevleri gösteriliyor." : ""} Excel'de her ders ayrı sayfadadır.
         </p>
         <button className="btn btn-sm" onClick={onExport} disabled={exporting}>
           <IconDownload size={14} />
@@ -729,8 +827,21 @@ function PrecheckSettings({
   );
 }
 
-function EditAssignment({ a, onDone }: { a: Assignment; onDone: () => void }) {
+function EditAssignment({
+  a,
+  classId,
+  courses,
+  onClassChanged,
+  onDone,
+}: {
+  a: Assignment;
+  classId: string;
+  courses: ClassOut["courses"];
+  onClassChanged: (c: ClassOut) => void;
+  onDone: () => void;
+}) {
   const [title, setTitle] = useState(a.title);
+  const [courseId, setCourseId] = useState(a.course_id ?? "");
   const [description, setDescription] = useState(a.description ?? "");
   const [deadline, setDeadline] = useState(isoToLocalInput(a.deadline_at));
   const [reqText, setReqText] = useState((a.requirements_json ?? []).join("\n"));
@@ -762,6 +873,7 @@ function EditAssignment({ a, onDone }: { a: Assignment; onDone: () => void }) {
           show_requirement_to_student: vis.requirement,
           show_clean_code_to_student: vis.cleanCode,
           submission_kind: kind,
+          ...(courseId ? { course_id: courseId } : {}),
         },
       });
       onDone();
@@ -774,6 +886,7 @@ function EditAssignment({ a, onDone }: { a: Assignment; onDone: () => void }) {
 
   return (
     <form onSubmit={submit} className="panel" style={{ padding: 14, marginTop: 14 }}>
+      <CoursePicker classId={classId} courses={courses} value={courseId} onChange={setCourseId} onClassChanged={onClassChanged} />
       <div className="field">
         <label>Başlık</label>
         <input value={title} onChange={(e) => setTitle(e.target.value)} required />
@@ -1051,13 +1164,22 @@ function PersonalExtension({
 
 function CreateAssignment({
   classId,
+  courses,
+  defaultCourseId,
+  onClassChanged,
   onDone,
   onCancel,
 }: {
   classId: string;
+  courses: ClassOut["courses"];
+  defaultCourseId: string;
+  onClassChanged: (c: ClassOut) => void;
   onDone: (id: string) => void;
   onCancel: () => void;
 }) {
+  const [courseId, setCourseId] = useState(
+    defaultCourseId || (courses.length === 1 ? courses[0].id : "")
+  );
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
@@ -1114,6 +1236,7 @@ function CreateAssignment({
           show_requirement_to_student: vis.requirement,
           show_clean_code_to_student: vis.cleanCode,
           submission_kind: kind,
+          course_id: courseId || null,
         },
       });
       onDone(created.id);
@@ -1127,12 +1250,13 @@ function CreateAssignment({
   return (
     <div className="card">
       <div className="row between">
-        <h3 style={{ fontSize: 18, margin: 0 }}>Yeni ödev</h3>
+        <h3 style={{ fontSize: 18, margin: 0 }}>Ödev ver</h3>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
           Vazgeç
         </button>
       </div>
       <form onSubmit={submit} style={{ marginTop: 14 }}>
+        <CoursePicker classId={classId} courses={courses} value={courseId} onChange={setCourseId} onClassChanged={onClassChanged} />
         <div className="field">
           <label>Başlık</label>
           <input ref={titleRef} value={title} onChange={(e) => setTitle(e.target.value)} required />
@@ -1182,10 +1306,116 @@ function CreateAssignment({
         <PrecheckSettings enabled={pre.enabled} limit={pre.limit} onChange={(enabled, limit) => setPre({ enabled, limit })} />
         <StudentVisibility value={vis} onChange={setVis} document={kind === "document"} />
         {err && <p className="error">{err}</p>}
-        <button className="btn btn-primary" disabled={busy || !title || !deadline}>
-          {busy ? "…" : "Ödev oluştur"}
+        <button className="btn btn-primary" disabled={busy || !title || !deadline || !courseId}>
+          {busy ? "…" : "Ödevi ver"}
         </button>
       </form>
+    </div>
+  );
+}
+
+/* ---------------- Sınıfın dersleri ---------------- */
+/** Sınıfta verilen dersler: filtre + ders ekle/çıkar. Ödevi olan ders çıkarılamaz. */
+function CourseBar({
+  cls,
+  assignments,
+  value,
+  onChange,
+  onClassChanged,
+}: {
+  cls: ClassOut;
+  assignments: Assignment[];
+  value: string;
+  onChange: (id: string) => void;
+  onClassChanged: (c: ClassOut) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const count = (id: string) => assignments.filter((a) => a.course_id === id).length;
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      onClassChanged(await api<ClassOut>(`/classes/${cls.id}/courses`, { method: "POST", body: { name: name.trim() } }));
+      setName("");
+      setAdding(false);
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : "Ders eklenemedi.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string, courseName: string) {
+    if (!window.confirm(`"${courseName}" dersi bu sınıftan çıkarılsın mı?`)) return;
+    try {
+      onClassChanged(await api<ClassOut>(`/classes/${cls.id}/courses/${id}`, { method: "DELETE" }));
+      if (value === id) onChange("");
+    } catch (e2) {
+      alert(e2 instanceof ApiError ? e2.message : "Ders çıkarılamadı.");
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <span className="eyebrow" style={{ marginRight: 4 }}>Dersler</span>
+        {cls.courses.length > 1 && (
+          <button className={"chip chip-btn" + (value === "" ? " on" : "")} onClick={() => onChange("")}>
+            Tümü
+          </button>
+        )}
+        {cls.courses.map((co) => {
+          const n = count(co.id);
+          return (
+            <span key={co.id} className={"chip chip-btn" + (value === co.id ? " on" : "")} style={{ paddingRight: n ? undefined : 4 }}>
+              <button className="chip-hit" onClick={() => onChange(value === co.id ? "" : co.id)}>
+                {co.name}
+                <span className="faint" style={{ marginLeft: 5 }}>{n}</span>
+              </button>
+              {n === 0 && (
+                <button className="chip-x" aria-label={`${co.name} dersini çıkar`} onClick={() => remove(co.id, co.name)}>
+                  <IconX size={12} />
+                </button>
+              )}
+            </span>
+          );
+        })}
+        {!adding ? (
+          <button className="chip chip-btn" style={{ borderStyle: "dashed" }} onClick={() => setAdding(true)}>
+            <IconPlus size={12} />
+            Ders ekle
+          </button>
+        ) : (
+          <form onSubmit={add} className="row" style={{ gap: 6 }}>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ders adı (ör. Mesleki Çözümleme I)"
+              aria-label="Ders adı"
+              style={{ height: 32, minWidth: 220 }}
+            />
+            <button className="btn btn-primary btn-sm" disabled={busy || !name.trim()}>
+              {busy ? "…" : "Ekle"}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdding(false)}>
+              Vazgeç
+            </button>
+          </form>
+        )}
+      </div>
+      {cls.courses.length === 0 && !adding && (
+        <p className="faint" style={{ fontSize: 12.5, margin: "6px 0 0" }}>
+          Bu sınıfta verdiğin dersleri ekle; ödev verirken dersi seçersin.
+        </p>
+      )}
+      {err && <p className="error" style={{ margin: "6px 0 0" }}>{err}</p>}
     </div>
   );
 }

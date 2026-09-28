@@ -265,11 +265,15 @@ export interface AdminSettings {
   founder_setup_open: boolean;
 }
 
+/** Sınıf = bölüm grubu; dersler sınıfa eklenir, ödev bir derse ait (web ile aynı). */
 export interface ClassOut {
   id: string;
-  course_id: string;
+  department_id: string | null;
+  department_name: string | null;
+  course_id: string | null;
   name: string;
   term: string | null;
+  courses: Course[];
 }
 
 export interface Department {
@@ -298,6 +302,8 @@ export interface Assignment {
   show_requirement_to_student?: boolean;
   show_clean_code_to_student?: boolean;
   submission_kind?: "code" | "document";
+  course_id?: string | null;
+  course_name?: string | null;
 }
 
 /** Verilmiş süre uzatması (student_id null = tüm sınıf). */
@@ -571,6 +577,9 @@ export type CellStatus = "none" | "ungraded" | "new_version" | "graded";
 export interface OverviewAssignment {
   id: string;
   title: string;
+  course_id: string | null;
+  course_name: string | null;
+  submission_kind?: "code" | "document";
   deadline_at: string;
   effective_deadline_at: string;
   open: boolean;
@@ -584,6 +593,8 @@ export interface OverviewClass {
   id: string;
   name: string;
   term: string | null;
+  department_name: string | null;
+  courses: { id: string; name: string; code: string | null }[];
   course_name: string | null;
   student_count: number;
   assignment_count: number;
@@ -593,6 +604,7 @@ export interface OverviewClass {
 export interface AttentionRef {
   class_id: string;
   class_name: string;
+  course_name?: string | null;
   assignment_id: string;
   title: string;
 }
@@ -633,7 +645,7 @@ export interface Roster {
 }
 
 export interface ClassGrades {
-  assignments: { id: string; title: string }[];
+  assignments: { id: string; title: string; course_id: string | null; course_name: string | null }[];
   rows: {
     student: { id: string; full_name: string; school_no: string | null };
     scores: (number | null)[];
@@ -646,6 +658,7 @@ export interface MyAssignment {
   id: string;
   class_id: string;
   class_name: string;
+  course_name?: string | null;
   title: string;
   deadline_at: string;
   effective_deadline_at: string;

@@ -1,13 +1,14 @@
 import { useCallback, useState } from "react";
 import { Alert, Modal, Pressable, Text, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { api, ApiError, type Assignment, type Reopen, type Roster, type RosterRow } from "../../src/api";
+import { api, ApiError, type Assignment, type ClassOut, type Reopen, type Roster, type RosterRow } from "../../src/api";
 import { BackHeader, Btn, Card, Chip, form, Icon, Loader, Muted, Screen, SectionLabel } from "../../src/ui";
 import { colors, fonts } from "../../src/theme";
 import { PrecheckSettings } from "../../src/PrecheckSettings";
 import { DateTimeField } from "../../src/DateTimeField";
 import { dueLabel, dueOf, fmtDateTime, isPast, timeLeft } from "../../src/format";
 import { StudentVisibility, SubmissionKindPicker, type SubmissionKind, type Visibility } from "../../src/StudentVisibility";
+import { CoursePicker } from "../../src/CoursePicker";
 import { radius } from "../../src/theme";
 
 function inThreeDays(): Date {
@@ -63,6 +64,8 @@ export default function AssignmentDetail() {
   const [ePre, setEPre] = useState({ enabled: false, limit: 3 });
   const [eVis, setEVis] = useState<Visibility>({ requirement: true, cleanCode: true });
   const [eKind, setEKind] = useState<SubmissionKind>("code");
+  const [eCourse, setECourse] = useState("");
+  const [classInfo, setClassInfo] = useState<ClassOut | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editMsg, setEditMsg] = useState<string | null>(null);
 
@@ -185,6 +188,10 @@ export default function AssignmentDetail() {
   function openEdit() {
     if (!assignment) return;
     setETitle(assignment.title);
+    setECourse(assignment.course_id ?? "");
+    api<ClassOut[]>("/classes")
+      .then((list) => setClassInfo(list.find((c) => c.id === assignment.class_id) ?? null))
+      .catch(() => {});
     setEDesc(assignment.description ?? "");
     setEReq((assignment.requirements_json ?? []).join("\n"));
     setEDeadline(new Date(assignment.deadline_at));
@@ -230,6 +237,7 @@ export default function AssignmentDetail() {
           show_requirement_to_student: eVis.requirement,
           show_clean_code_to_student: eVis.cleanCode,
           submission_kind: eKind,
+          ...(eCourse ? { course_id: eCourse } : {}),
         },
       });
       setAssignment(updated);
@@ -270,6 +278,11 @@ export default function AssignmentDetail() {
       <BackHeader />
       {err && <Text style={{ color: colors.danger, marginBottom: 10 }}>{err}</Text>}
 
+      {assignment?.course_name ? (
+        <View style={{ flexDirection: "row", marginBottom: 6 }}>
+          <Chip text={assignment.course_name} kind="gold" />
+        </View>
+      ) : null}
       <Text style={{ color: colors.ink, fontSize: 23, fontFamily: fonts.display }}>{assignment?.title ?? "Ödev"}</Text>
       {assignment && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
@@ -312,6 +325,15 @@ export default function AssignmentDetail() {
 
       {panel === "edit" && (
         <Card style={{ marginTop: 12 }}>
+          {classInfo && (
+            <CoursePicker
+              classId={classInfo.id}
+              courses={classInfo.courses}
+              value={eCourse}
+              onChange={setECourse}
+              onClassChanged={setClassInfo}
+            />
+          )}
           <Text style={form.label}>Başlık</Text>
           <TextInput value={eTitle} onChangeText={setETitle} placeholderTextColor={colors.faint} style={form.input} />
           <Text style={[form.label, { marginTop: 10 }]}>Açıklama</Text>

@@ -13,6 +13,7 @@ from app.deps import get_current_user, require_roles
 from app.models import (
     Assignment,
     Class,
+    ClassCourse,
     Community,
     CommunityPost,
     CommunityReply,
@@ -23,8 +24,10 @@ from app.models import (
     User,
 )
 from app.schemas import (
+    ClassCourseIn,
     ClassIn,
     ClassOut,
+    ClassUpdate,
     CourseIn,
     CourseOut,
     DepartmentIn,
@@ -34,6 +37,7 @@ from app.schemas import (
     StudentPasswordOut,
     UserOut,
 )
+from app.lib.classinfo import attach_course, class_out
 from app.services import account_security as sec
 from app.services import sessions
 
@@ -45,9 +49,16 @@ router = APIRouter(tags=["org"])
 def create_department(
     payload: DepartmentIn,
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles("admin")),
+    user: User = Depends(require_roles("admin", "academician")),
 ) -> DepartmentOut:
-    dep = Department(name=payload.name)
+    """Listede olmayan bölümü hoca da ekleyebilir; aynı bölüm (harf farkı gözetmeden) tekrar açılmaz."""
+    if user.is_demo:
+        raise HTTPException(status_code=403, detail="Demo hesabı bölüm ekleyemez.")
+    name = " ".join(payload.name.split())
+    existing = next((d for d in db.scalars(select(Department)) if _norm(d.name) == _norm(name)), None)
+    if existing:
+        return DepartmentOut.model_validate(existing)
+    dep = Department(name=name)
     db.add(dep)
     db.commit()
     db.refresh(dep)
@@ -67,8 +78,10 @@ def list_departments(
 def create_course(
     payload: CourseIn,
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles("admin", "academician")),
+    user: User = Depends(require_roles("admin", "academician")),
 ) -> CourseOut:
+    if user.is_demo:
+        raise HTTPException(status_code=403, detail="Demo hesabı yeni ders açamaz.")
     if db.get(Department, payload.department_id) is None:
         raise HTTPException(status_code=404, detail="Bolum bulunamadi.")
     course = Course(
@@ -100,22 +113,29 @@ def create_class(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("academician", "admin")),
 ) -> ClassOut:
-    if db.get(Course, payload.course_id) is None:
-        raise HTTPException(status_code=404, detail="Ders bulunamadi.")
+    course_ids = list(dict.fromkeys(payload.course_ids + ([payload.course_id] if payload.course_id else [])))
+    courses = [db.get(Course, cid) for cid in course_ids]
+    if any(c is None for c in courses):
+        raise HTTPException(status_code=404, detail="Ders bulunamadı.")
+    department_id = payload.department_id or (courses[0].department_id if courses else None)
+    if department_id is None or db.get(Department, department_id) is None:
+        raise HTTPException(status_code=400, detail="Bölüm seçin.")
     cls = Class(
-        course_id=payload.course_id,
+        department_id=department_id,
         academician_id=user.id,
-        name=payload.name,
+        name=payload.name.strip(),
         term=payload.term,
     )
     db.add(cls)
     db.flush()
+    for c in courses:
+        attach_course(db, cls, c.id)
     # Sinifa ozel bir topluluk otomatik acilir (soru-cevap alani hazir gelsin).
     db.add(Community(name=f"{cls.name} — Sınıf", scope="class",
                      scope_ref_id=cls.id, created_by=user.id))
     db.commit()
     db.refresh(cls)
-    return ClassOut.model_validate(cls)
+    return class_out(db, cls)
 
 
 @router.get("/classes", response_model=list[ClassOut])
@@ -133,7 +153,7 @@ def list_classes(
             .where(Enrollment.student_id == user.id)
         )
     rows = db.scalars(stmt.order_by(Class.name)).all()
-    return [ClassOut.model_validate(r) for r in rows]
+    return [class_out(db, r) for r in rows]
 
 
 def _owned_class_or_404(db: Session, class_id: uuid.UUID, user: User) -> Class:
@@ -143,6 +163,77 @@ def _owned_class_or_404(db: Session, class_id: uuid.UUID, user: User) -> Class:
     if user.role != "admin" and cls.academician_id != user.id:
         raise HTTPException(status_code=403, detail="Bu sinif size ait degil.")
     return cls
+
+
+@router.patch("/classes/{class_id}", response_model=ClassOut)
+def update_class(
+    class_id: uuid.UUID,
+    payload: ClassUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("academician", "admin")),
+) -> ClassOut:
+    cls = _owned_class_or_404(db, class_id, user)
+    if payload.name is not None:
+        cls.name = payload.name.strip()
+    if payload.term is not None:
+        cls.term = payload.term.strip() or None
+    db.commit()
+    db.refresh(cls)
+    return class_out(db, cls)
+
+
+@router.post("/classes/{class_id}/courses", response_model=ClassOut, status_code=201)
+def add_class_course(
+    class_id: uuid.UUID,
+    payload: ClassCourseIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("academician", "admin")),
+) -> ClassOut:
+    """Sınıfa ders ekler. Listede yoksa aynı adla sınıfın bölümünde yeni ders açılır."""
+    cls = _owned_class_or_404(db, class_id, user)
+    if payload.course_id:
+        course = db.get(Course, payload.course_id)
+        if course is None:
+            raise HTTPException(status_code=404, detail="Ders bulunamadı.")
+    elif payload.name:
+        if cls.department_id is None:
+            raise HTTPException(status_code=400, detail="Sınıfın bölümü yok; listeden ders seçin.")
+        name = payload.name.strip()
+        # Aynı ders iki kez açılmasın (büyük/küçük harf ve I/ı/İ/i farkı gözetmeden)
+        course = next((c for c in db.scalars(select(Course).where(Course.department_id == cls.department_id))
+                       if _norm(c.name) == _norm(name)), None)
+        if course is None:
+            if user.is_demo:
+                # Herkese açık demo: yeni ders gerçek hocaların listesine düşmesin
+                raise HTTPException(status_code=403, detail="Demo hesabı yeni ders açamaz; listedeki bir dersi yazın.")
+            course = Course(department_id=cls.department_id, name=name,
+                            code=(payload.code or "").strip() or None)
+            db.add(course)
+            db.flush()
+    else:
+        raise HTTPException(status_code=400, detail="Ders seçin ya da yeni dersin adını yazın.")
+    attach_course(db, cls, course.id)
+    db.commit()
+    return class_out(db, cls)
+
+
+def _norm(s: str) -> str:
+    return " ".join(s.lower().replace("̇", "").replace("ı", "i").split())
+
+
+@router.delete("/classes/{class_id}/courses/{course_id}", response_model=ClassOut)
+def remove_class_course(
+    class_id: uuid.UUID,
+    course_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("academician", "admin")),
+) -> ClassOut:
+    cls = _owned_class_or_404(db, class_id, user)
+    if db.scalar(select(Assignment).where(Assignment.class_id == class_id, Assignment.course_id == course_id)):
+        raise HTTPException(status_code=400, detail="Bu derste ödev var. Önce ödevleri silin ya da başka derse taşıyın.")
+    db.execute(delete(ClassCourse).where(ClassCourse.class_id == class_id, ClassCourse.course_id == course_id))
+    db.commit()
+    return class_out(db, cls)
 
 
 @router.delete("/classes/{class_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -177,6 +268,7 @@ def delete_class(
             db.execute(delete(CommunityPost).where(CommunityPost.id.in_(post_ids)))
         db.execute(delete(Community).where(Community.id.in_(comm_ids)))
     db.execute(delete(Enrollment).where(Enrollment.class_id == class_id))
+    db.execute(delete(ClassCourse).where(ClassCourse.class_id == class_id))
     db.delete(cls)
     db.commit()
 

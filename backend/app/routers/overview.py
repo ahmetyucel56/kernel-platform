@@ -24,13 +24,13 @@ from app.models import (
     Assignment,
     AssignmentReopen,
     Class,
-    Course,
     Enrollment,
     Precheck,
     Score,
     Submission,
     User,
 )
+from app.lib.classinfo import class_courses, course_names, department_name
 from app.routers.insights import _owned_class
 from app.routers.submissions import _aware
 from app.services import analysis_service as ana
@@ -146,11 +146,12 @@ def teaching_overview(
     out_classes, upcoming = [], []
     ungraded, due_soon, similar, missing = [], [], [], []
     for cls in classes:
-        course = db.get(Course, cls.course_id)
+        courses = class_courses(db, cls.id)
         students = _students(db, cls.id)
         assignments = db.scalars(
             select(Assignment).where(Assignment.class_id == cls.id).order_by(Assignment.deadline_at.desc())
         ).all()
+        cnames = course_names(db, [a.course_id for a in assignments])
         a_out = []
         for a in assignments:
             rows = _cells(db, a, students)
@@ -161,12 +162,16 @@ def teaching_overview(
             waiting = sum(1 for r in rows if _needs_review(r))
             item = {
                 "id": str(a.id), "title": a.title, "deadline_at": _iso(a.deadline_at),
+                "course_id": str(a.course_id) if a.course_id else None,
+                "course_name": cnames.get(a.course_id),
+                "submission_kind": a.submission_kind,
                 "effective_deadline_at": due.isoformat(), "open": is_open,
                 "enrolled": len(students), "submitted": submitted, "graded": graded,
                 "needs_review": waiting,
             }
             a_out.append(item)
             ref = {"class_id": str(cls.id), "class_name": cls.name,
+                   "course_name": cnames.get(a.course_id),
                    "assignment_id": str(a.id), "title": a.title}
             if waiting:
                 ungraded.append({**ref, "count": waiting})
@@ -191,7 +196,9 @@ def teaching_overview(
                                     "submission_id": r["latest"]["id"]})
         out_classes.append({
             "id": str(cls.id), "name": cls.name, "term": cls.term,
-            "course_name": course.name if course else None,
+            "department_name": department_name(db, cls),
+            "courses": [{"id": str(c.id), "name": c.name, "code": c.code} for c in courses],
+            "course_name": courses[0].name if len(courses) == 1 else None,
             "student_count": len(students), "assignment_count": len(assignments),
             "assignments": a_out,
         })
@@ -268,6 +275,7 @@ def class_grades(
     assignments = db.scalars(
         select(Assignment).where(Assignment.class_id == cls.id).order_by(Assignment.deadline_at)
     ).all()
+    cnames = course_names(db, [a.course_id for a in assignments])
     by_assignment = {a.id: {r["student"]["id"]: r for r in _cells(db, a, students)} for a in assignments}
     rows = []
     for st in students:
@@ -280,7 +288,10 @@ def class_grades(
             "statuses": [c["status"] for c in cells],
             "average": round(sum(given) / len(given), 1) if given else None,
         })
-    return {"assignments": [{"id": str(a.id), "title": a.title} for a in assignments], "rows": rows}
+    return {"assignments": [{"id": str(a.id), "title": a.title,
+                             "course_id": str(a.course_id) if a.course_id else None,
+                             "course_name": cnames.get(a.course_id)} for a in assignments],
+            "rows": rows}
 
 
 # --- Ogrenci ---------------------------------------------------------------
@@ -299,7 +310,9 @@ def my_assignments(
     now = datetime.now(timezone.utc)
     out = []
     for cls in classes:
-        for a in db.scalars(select(Assignment).where(Assignment.class_id == cls.id)):
+        rows_a = db.scalars(select(Assignment).where(Assignment.class_id == cls.id)).all()
+        cnames = course_names(db, [a.course_id for a in rows_a])
+        for a in rows_a:
             cell = _cells(db, a, [user])[0]
             due = _class_due(db, a, user.id)
             pre = None
@@ -313,6 +326,7 @@ def my_assignments(
                 pre = {"limit": a.precheck_limit, "remaining": max(0, a.precheck_limit - used)}
             out.append({
                 "id": str(a.id), "class_id": str(cls.id), "class_name": cls.name,
+                "course_name": cnames.get(a.course_id), "submission_kind": a.submission_kind,
                 "title": a.title, "deadline_at": _iso(a.deadline_at),
                 "effective_deadline_at": due.isoformat(), "open": due >= now,
                 "latest": cell["latest"], "versions": cell["versions"],

@@ -38,6 +38,7 @@ from app.schemas import (
     ReopenOut,
 )
 from app.routers.submissions import _aware
+from app.lib.classinfo import class_courses, course_names
 from app.services import analysis_service as ana
 from app.services.notifications import create_notification
 from app.services.purge import purge_assignment
@@ -62,9 +63,11 @@ def _with_effective_deadline(db: Session, rows, user: User) -> list[AssignmentOu
             .group_by(AssignmentReopen.assignment_id)
         ):
             latest[aid] = _aware(until)
+    names = course_names(db, [a.course_id for a in rows])
     out = []
     for a in rows:
         o = AssignmentOut.model_validate(a)
+        o.course_name = names.get(a.course_id)
         base = _aware(a.deadline_at)
         # Ikisi de saat dilimli dondurulur; SQLite'in dusurdugu tz yuzunden
         # istemci iki tarihi farkli yorumlayip sahte "uzatildi" gostermesin.
@@ -107,15 +110,30 @@ def _class_owned(db: Session, class_id: uuid.UUID, user: User) -> Class:
     return cls
 
 
+def _resolve_course(db: Session, cls: Class, course_id: uuid.UUID | None) -> uuid.UUID | None:
+    """Ödevin dersi sınıfın derslerinden biri olmalı. Sınıfın tek dersi varsa o seçilir."""
+    courses = class_courses(db, cls.id)
+    if course_id is not None:
+        if course_id not in {c.id for c in courses}:
+            raise HTTPException(status_code=400, detail="Bu ders sınıfta yok. Önce dersi sınıfa ekleyin.")
+        return course_id
+    if len(courses) == 1:
+        return courses[0].id
+    if courses:
+        raise HTTPException(status_code=400, detail="Ödevin hangi derse ait olduğunu seçin.")
+    raise HTTPException(status_code=400, detail="Sınıfta henüz ders yok. Önce sınıfa ders ekleyin.")
+
+
 @router.post("", response_model=AssignmentOut, status_code=201)
 def create_assignment(
     payload: AssignmentIn,
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("academician", "admin")),
 ) -> AssignmentOut:
-    _class_owned(db, payload.class_id, user)
+    cls = _class_owned(db, payload.class_id, user)
     assignment = Assignment(
         class_id=payload.class_id,
+        course_id=_resolve_course(db, cls, payload.course_id),
         title=payload.title,
         description=payload.description,
         requirements_json=payload.requirements or None,
@@ -129,6 +147,7 @@ def create_assignment(
     )
     db.add(assignment)
     db.flush()
+    names = course_names(db, [assignment.course_id])
     # Sinifa kayitli tum ogrencilere "yeni odev" bildirimi
     student_ids = db.scalars(
         select(Enrollment.student_id).where(Enrollment.class_id == payload.class_id)
@@ -136,7 +155,8 @@ def create_assignment(
     for sid in student_ids:
         create_notification(
             db, sid, "assignment",
-            f"Yeni ödev: '{assignment.title}'.",
+            f"Yeni ödev: '{assignment.title}'"
+            + (f" ({names[assignment.course_id]})." if assignment.course_id in names else "."),
             assignment_id=assignment.id,
         )
     db.commit()
@@ -173,7 +193,9 @@ def update_assignment(
     assignment = db.get(Assignment, assignment_id)
     if assignment is None:
         raise HTTPException(status_code=404, detail="Odev bulunamadi.")
-    _class_owned(db, assignment.class_id, user)
+    cls = _class_owned(db, assignment.class_id, user)
+    if payload.course_id is not None:
+        assignment.course_id = _resolve_course(db, cls, payload.course_id)
     if payload.title is not None:
         assignment.title = payload.title
     if payload.description is not None:

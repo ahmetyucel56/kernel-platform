@@ -16,6 +16,7 @@ from app.models import (
     Assignment,
     AssignmentReopen,
     Class,
+    ClassCourse,
     Comment,
     Community,
     CommunityPost,
@@ -91,6 +92,7 @@ def purge_class(db: Session, cls: Class) -> list[str]:
     db.execute(delete(AiAnalysis).where(AiAnalysis.target_class_id == cls.id))
     db.execute(delete(ProgressSnapshot).where(ProgressSnapshot.class_id == cls.id))
     db.execute(delete(Enrollment).where(Enrollment.class_id == cls.id))
+    db.execute(delete(ClassCourse).where(ClassCourse.class_id == cls.id))
     db.delete(cls)
     return keys
 

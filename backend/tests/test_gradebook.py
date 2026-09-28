@@ -51,13 +51,15 @@ def test_gradebook_contents(client, aca, s1, s2, gb_class, submit):
     assert rows[2] == (STUDENT_2, "Zeynep Kaya", None, None, None)  # 0 degil, bos
     assert "Ortalama yalnızca" in rows[4][0]
 
-    detail = {(r[0], r[2]): r for r in wb["Ayrıntı"].iter_rows(min_row=2, values_only=True)}
+    # Ayrıntı: Ders sütunu ödevden önce
+    detail = {(r[0], r[3]): r for r in wb["Ayrıntı"].iter_rows(min_row=2, values_only=True)}
     d = detail[(STUDENT_1, "Ödev 1")]
-    assert d[4] == "Zamanında" and d[5] == 2 and d[7] == 80 and d[8] == 1
-    assert "Notlandıktan sonra yeni sürüm" in d[12]
-    assert isinstance(d[6], datetime)
-    assert detail[(STUDENT_2, "Ödev 1")][4] == "Teslim yok"
-    assert detail[(STUDENT_2, "Ödev 2")][7] is None
+    assert d[2]  # dersin adı
+    assert d[5] == "Zamanında" and d[6] == 2 and d[8] == 80 and d[9] == 1
+    assert "Notlandıktan sonra yeni sürüm" in d[13]
+    assert isinstance(d[7], datetime)
+    assert detail[(STUDENT_2, "Ödev 1")][5] == "Teslim yok"
+    assert detail[(STUDENT_2, "Ödev 2")][8] is None
 
 
 def test_gradebook_link_security(client, aca, s1, gb_class, submit, class_id):

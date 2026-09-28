@@ -127,16 +127,32 @@ class Course(Base):
 
 
 class Class(Base):
+    """Bölüm grubu (ör. "Bilgisayar Programcılığı 1. sınıf"). Öğrenciler bir kez kaydolur;
+    hoca sınıfa istediği zaman ders ekler ve ödevi bir ders seçerek verir (ClassCourse)."""
     __tablename__ = "classes"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    course_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("courses.id"), nullable=False
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("departments.id", name="fk_classes_department_id"), nullable=True
+    )
+    # Eski model (sınıf = tek ders). Yeni sınıflarda boş; dersler class_courses'ta.
+    course_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("courses.id"), nullable=True
     )
     academician_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=False
     )
     term: Mapped[str | None] = mapped_column(String(50), nullable=True)  # ornek: 2025-Guz
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+
+class ClassCourse(Base):
+    """Sınıfta verilen dersler (hoca istediği zaman ekler)."""
+    __tablename__ = "class_courses"
+    __table_args__ = (UniqueConstraint("class_id", "course_id", name="uq_class_course"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    class_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("classes.id"), nullable=False)
+    course_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("courses.id"), nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=_now, nullable=True)
 
 
 class Enrollment(Base):
@@ -157,6 +173,10 @@ class Assignment(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     class_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("classes.id"), nullable=False
+    )
+    # Ödevin dersi (sınıfın derslerinden biri)
+    course_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("courses.id", name="fk_assignments_course_id"), nullable=True
     )
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
